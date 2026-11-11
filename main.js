@@ -4,6 +4,10 @@ import path from 'node:path'
 import { approve, details, fetchBoard } from './gitlab.js'
 import { ask, reviewPrompt } from './reviewer.js'
 
+// keep the data folder named after the package, so the rename does not lose the saved token and reviews
+app.setPath('userData', app.getPath('userData'))
+app.setName('Task Bar')
+
 const POLL_MS = 2 * 60 * 1000
 const ALERT = new Set(['Needs re-review', 'Has feedback'])
 
