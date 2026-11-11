@@ -13,5 +13,8 @@ contextBridge.exposeInMainWorld('api', {
   askReview: (mr, question) => ipcRenderer.invoke('review:ask', mrId(mr), question),
   onReviews: fn => ipcRenderer.on('reviews', (_e, r) => fn(r)),
   onState: fn => ipcRenderer.on('state', (_e, s) => fn(s)),
+  getNotifications: () => ipcRenderer.invoke('notifications:get'),
+  clearNotifications: id => ipcRenderer.invoke('notifications:clear', id),
+  onNotifications: fn => ipcRenderer.on('notifications', (_e, n) => fn(n)),
   onSelect: fn => ipcRenderer.on('select', (_e, id) => fn(id)),
 })

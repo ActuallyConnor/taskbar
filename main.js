@@ -66,19 +66,40 @@ function sendReviews() {
   fs.writeFileSync(reviewsPath(), JSON.stringify(Object.fromEntries(reviews)), { mode: 0o600 })
   win?.webContents.send('reviews', Object.fromEntries(reviews))
 }
-let alerted = null // ids already in an alert column; null until first load so startup does not spam
+// Past notifications, newest first, saved to disk so the list survives a restart.
+const notificationsPath = () => path.join(app.getPath('userData'), 'notifications.json')
+let notifications = (() => { try { return JSON.parse(fs.readFileSync(notificationsPath(), 'utf8')) } catch { return [] } })()
+function sendNotifications() {
+  fs.writeFileSync(notificationsPath(), JSON.stringify(notifications), { mode: 0o600 })
+  win?.webContents.send('notifications', notifications)
+}
+
+const openMr = id => (win.show(), win.focus(), win.webContents.send('select', id))
+
+function push(card, title) {
+  const body = `${card.title}\n${card.ref}`
+  // ponytail: keep the last 100; older ones drop off
+  notifications = [{ id: crypto.randomUUID(), mrId: card.id, title, body, at: new Date().toISOString() }, ...notifications].slice(0, 100)
+  sendNotifications()
+  const n = new Notification({ title, body })
+  n.on('click', () => openMr(card.id))
+  n.show()
+  app.dock?.bounce() // one jump in the Dock; macOS skips it when the app is already in front
+}
+
+let seen = null // status of each card at the last load; null until first load so startup does not spam
 
 function notify(board) {
-  const hot = [...board.reviewing, ...board.mine].filter(c => ALERT.has(c.status))
-  if (alerted) {
-    for (const c of hot.filter(c => !alerted.has(c.id))) {
-      const n = new Notification({ title: c.status, body: `${c.title}\n${c.ref}` })
-      n.on('click', () => (win.show(), win.webContents.send('select', c.id)))
-      n.show()
+  const cards = [...board.reviewing, ...board.mine]
+  if (seen) {
+    for (const c of cards) {
+      const was = seen.get(c.id)
+      if (ALERT.has(c.status) && !ALERT.has(was)) push(c, c.status)
+      else if (!was && board.reviewing.includes(c)) push(c, 'Review requested')
     }
   }
-  alerted = new Set(hot.map(c => c.id))
-  app.setBadgeCount(hot.length)
+  seen = new Map(cards.map(c => [c.id, c.status]))
+  app.setBadgeCount(cards.filter(c => ALERT.has(c.status)).length)
 }
 
 async function load() {
@@ -114,7 +135,7 @@ const refresh = () => (inflight ??= load().finally(() => (inflight = null))).the
 ipcMain.handle('config:get', () => ({ host: loadConfig()?.host ?? 'https://gitlab.com' }))
 ipcMain.handle('config:save', (_e, c) => {
   saveConfig(c)
-  alerted = null
+  seen = null
   return refresh()
 })
 ipcMain.handle('refresh', refresh)
@@ -132,16 +153,22 @@ const cardFor = mr => {
   return c
 }
 
-function turn(id, prompt) {
-  const r = reviews.get(id)
+function turn(card, prompt) {
+  const r = reviews.get(card.id)
   r.busy = true
   r.error = null
   sendReviews()
   ask(r.provider, prompt, r.session)
     .then(({ session, text }) => { r.session = session; r.messages.push({ role: 'assistant', text }) })
     .catch(e => { r.error = e.message })
-    .finally(() => { r.busy = false; sendReviews() })
+    .finally(() => { r.busy = false; sendReviews(); push(card, r.error ? 'AI review failed' : 'AI review finished') })
 }
+
+ipcMain.handle('notifications:get', () => notifications)
+ipcMain.handle('notifications:clear', (_e, id) => {
+  notifications = typeof id === 'string' ? notifications.filter(n => n.id !== id) : []
+  sendNotifications()
+})
 
 ipcMain.handle('review:get', () => Object.fromEntries(reviews))
 ipcMain.handle('review:start', (_e, mr, provider) => {
@@ -149,14 +176,14 @@ ipcMain.handle('review:start', (_e, mr, provider) => {
   if (!['claude', 'codex'].includes(provider)) throw new Error('Bad provider')
   if (reviews.get(c.id)?.busy) return
   reviews.set(c.id, { provider, messages: [], busy: false })
-  turn(c.id, reviewPrompt(c.url))
+  turn(c, reviewPrompt(c.url))
 })
 ipcMain.handle('review:ask', (_e, mr, question) => {
   const c = cardFor(mr)
   const r = reviews.get(c.id)
   if (!r || r.busy || !r.session || !question?.trim()) return
   r.messages.push({ role: 'user', text: question.trim() })
-  turn(c.id, question.trim())
+  turn(c, question.trim())
 })
 
 const icon = path.join(import.meta.dirname, 'icon.png')

@@ -3,9 +3,11 @@ import { createRoot } from 'react-dom/client'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import CheckIcon from '@mui/icons-material/Check'
+import CloseIcon from '@mui/icons-material/Close'
+import NotificationsIcon from '@mui/icons-material/Notifications'
 import {
   Alert, AppBar, Avatar, Badge, Box, Button, ButtonGroup, Card, CardActionArea, Chip, CircularProgress, Container, CssBaseline, Dialog,
-  DialogActions, DialogContent, DialogTitle, Divider, Drawer, LinearProgress, Paper, Stack, Tab, Tabs, TextField,
+  DialogActions, DialogContent, DialogTitle, Divider, Drawer, IconButton, LinearProgress, List, ListItem, ListItemButton, ListItemText, Paper, Popover, Stack, Tab, Tabs, TextField,
   ThemeProvider, Toolbar, Typography, createTheme,
 } from '@mui/material'
 
@@ -278,6 +280,43 @@ function Settings({ open, onClose }) {
   )
 }
 
+function Notifications({ onOpen }) {
+  const [items, setItems] = useState([])
+  const [anchor, setAnchor] = useState(null)
+  useEffect(() => { window.api.onNotifications(setItems); window.api.getNotifications().then(setItems) }, [])
+  const open = n => { setAnchor(null); onOpen(n.mrId) }
+  return (
+    <>
+      <IconButton color="inherit" onClick={e => setAnchor(e.currentTarget)} title="Notifications">
+        <Badge color="warning" badgeContent={items.length}><NotificationsIcon /></Badge>
+      </IconButton>
+      <Popover open={!!anchor} anchorEl={anchor} onClose={() => setAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}>
+        <Box sx={{ width: 380, maxHeight: 500, display: 'flex', flexDirection: 'column' }}>
+          <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1 }}>
+            <Typography variant="subtitle2">Notifications</Typography>
+            <Button size="small" onClick={() => window.api.clearNotifications()} disabled={!items.length}>Clear all</Button>
+          </Stack>
+          <Divider />
+          {items.length ? (
+            <List dense sx={{ overflow: 'auto' }}>
+              {items.map(n => (
+                <ListItem key={n.id} disablePadding secondaryAction={
+                  <IconButton edge="end" size="small" title="Clear" onClick={() => window.api.clearNotifications(n.id)}><CloseIcon fontSize="small" /></IconButton>
+                }>
+                  <ListItemButton onClick={() => open(n)}>
+                    <ListItemText primary={n.title} secondary={<>{n.body.split('\n')[0]}<br />{when(n.at)}</>} />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          ) : <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>No notifications.</Typography>}
+        </Box>
+      </Popover>
+    </>
+  )
+}
+
 function App() {
   const [state, setState] = useState({})
   const [tab, setTab] = useState('reviewing')
@@ -291,8 +330,9 @@ function App() {
 
   const refresh = () => { setLoading(true); window.api.refresh().then(setState).finally(() => setLoading(false)) }
   const select = id => { setDetails(null); setFull(false); setSelectedId(id) }
+  const openFull = id => { select(id); setFull(true) }
   const close = () => { setSelectedId(null); setFull(false) }
-  useEffect(() => { window.api.onState(setState); window.api.onSelect(select); window.api.onReviews(setReviews); window.api.getReviews().then(setReviews); refresh() }, [])
+  useEffect(() => { window.api.onState(setState); window.api.onSelect(openFull); window.api.onReviews(setReviews); window.api.getReviews().then(setReviews); refresh() }, [])
 
   const board = state.board
   // look the card up on every render so it follows the board (status changes, merged MRs disappear)
@@ -331,6 +371,7 @@ function App() {
               <Button color="inherit" onClick={() => setSettingsOpen(true)}>Settings</Button>
             </>
           )}
+          <Notifications onOpen={openFull} />
         </Toolbar>
       </AppBar>
       {loading && <LinearProgress />}
