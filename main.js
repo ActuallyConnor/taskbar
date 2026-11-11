@@ -37,6 +37,25 @@ function saveConfig({ host, token }) {
 
 let win
 let state = {}
+
+// AI review chats, keyed by card id. They live here (not in the page) so they keep running when the page reloads,
+// and are saved to disk so they come back after a restart. The CLIs keep their own sessions, so follow-ups still work.
+const reviewsPath = () => path.join(app.getPath('userData'), 'reviews.json')
+function loadReviews() {
+  try {
+    const saved = JSON.parse(fs.readFileSync(reviewsPath(), 'utf8'))
+    // a turn that was running when the app quit is gone; say so instead of spinning forever
+    return new Map(Object.entries(saved).map(([id, r]) =>
+      [Number(id), { ...r, busy: false, error: r.busy ? 'Stopped when the app quit. Try again.' : r.error }]))
+  } catch {
+    return new Map()
+  }
+}
+const reviews = loadReviews()
+function sendReviews() {
+  fs.writeFileSync(reviewsPath(), JSON.stringify(Object.fromEntries(reviews)), { mode: 0o600 })
+  win?.webContents.send('reviews', Object.fromEntries(reviews))
+}
 let alerted = null // ids already in an alert column; null until first load so startup does not spam
 
 function notify(board) {
@@ -58,6 +77,10 @@ async function load() {
   try {
     const board = await fetchBoard(config)
     notify(board)
+    // drop chats for MRs that left the board (merged or closed)
+    const onBoard = new Set([...board.reviewing, ...board.mine].map(c => c.id))
+    const gone = [...reviews.keys()].filter(id => !onBoard.has(id) && !reviews.get(id).busy)
+    if (gone.length) (gone.forEach(id => reviews.delete(id)), sendReviews())
     state = { board, fetchedAt: new Date().toISOString() }
   } catch (e) {
     state = { ...state, error: e.message }
@@ -91,10 +114,6 @@ ipcMain.handle('mr:approve', async (_e, mr) => {
   return refresh()
 })
 
-// AI reviews live here (not in the page) so they keep running and survive a reload. Keyed by card id.
-// ponytail: in memory only; lost when the app quits
-const reviews = new Map()
-const sendReviews = () => win?.webContents.send('reviews', Object.fromEntries(reviews))
 
 const cardFor = mr => {
   const [projectId, iid] = mrId(mr)
