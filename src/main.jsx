@@ -173,7 +173,7 @@ function Sidebar({ mr, details, review, onClose, onFull, onError }) {
             <Typography variant="h6">{mr.title}</Typography>
           </Box>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            <Chip size="small" label={mr.status} color={ALERT.has(mr.status) ? 'warning' : 'default'} />
+            <Chip size="small" label={column(mr, review)} color={ALERT.has(mr.status) ? 'warning' : 'default'} />
             <Person user={mr.author} />
           </Stack>
           <Box>
@@ -223,7 +223,7 @@ function FullView({ mr, details, review, onError }) {
             <Typography variant="caption" color="text.secondary">{mr.ref}</Typography>
             <Typography variant="h5" gutterBottom>{mr.title}</Typography>
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-              <Chip size="small" label={mr.status} color={ALERT.has(mr.status) ? 'warning' : 'default'} />
+              <Chip size="small" label={column(mr, review)} color={ALERT.has(mr.status) ? 'warning' : 'default'} />
               <Person user={mr.author} />
               <Box sx={{ flex: 1 }} />
               {review?.busy && <CircularProgress size={18} titleAccess="AI review running" />}
