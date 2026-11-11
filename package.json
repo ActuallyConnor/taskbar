@@ -8,7 +8,7 @@
     "dev": "electron .",
     "build": "vite build",
     "start": "vite build && electron . --prod",
-    "test": "node --test",
+    "test": "node --check main.js && node --test",
     "dist": "vite build && electron-builder --mac dir",
     "install-app": "npm run dist && (pkill -x 'Task Bar' || true) && rm -rf '/Applications/Task Bar.app' && cp -R 'release/mac-arm64/Task Bar.app' /Applications/"
   },

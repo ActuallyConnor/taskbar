@@ -115,8 +115,8 @@ async function load() {
     const stale = applyMoves([...board.reviewing, ...board.mine], moves)
     // also forget moves for MRs that left the board
     const ids = new Set([...board.reviewing, ...board.mine].map(c => c.id))
-    const gone = [...moves.keys()].filter(id => !ids.has(id))
-    if (stale.length || gone.length) ([...stale, ...gone].forEach(id => moves.delete(id)), saveMoves())
+    const left = [...moves.keys()].filter(id => !ids.has(id))
+    if (stale.length || left.length) ([...stale, ...left].forEach(id => moves.delete(id)), saveMoves())
     notify(board)
     // drop chats for MRs that left the board (merged or closed)
     const onBoard = new Set([...board.reviewing, ...board.mine].map(c => c.id))
