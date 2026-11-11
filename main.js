@@ -155,6 +155,7 @@ app.whenReady().then(() => {
     height: 800,
     webPreferences: { preload: path.join(import.meta.dirname, 'preload.cjs') },
   })
+  win.maximize() // fill the screen (not macOS full screen mode); the size above is the size when you un-maximize
   win.webContents.setWindowOpenHandler(openExternalHandler)
   win.webContents.on('will-navigate', (e, url) => {
     // a link click in a comment must never replace the app; send it to the browser instead
