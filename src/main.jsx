@@ -12,7 +12,7 @@ import {
 const theme = createTheme({ colorSchemes: { dark: true } })
 
 const BOARDS = {
-  reviewing: { label: 'Reviewing', columns: ['To review', 'Needs re-review', 'Waiting on author', 'Approved'] },
+  reviewing: { label: 'Reviewing', columns: ['To review', 'AI reviewed', 'Needs re-review', 'Waiting on author', 'Approved'] },
   mine: { label: 'My MRs', columns: ['Draft', 'In review', 'Has feedback', 'Ready to merge'] },
 }
 const ALERT = new Set(['Needs re-review', 'Has feedback'])
@@ -132,11 +132,15 @@ function MrCard({ mr, onSelect, review }) {
   )
 }
 
+// "To review" splits in two: an MR you ran an AI review on, but have not commented on in GitLab yet, gets its own column.
+// Once you comment, GitLab status moves it on as usual.
+const column = (mr, review) => mr.status === 'To review' && review?.messages.length > 0 ? 'AI reviewed' : mr.status
+
 function Board({ columns, cards, onSelect, reviews }) {
   return (
     <Box sx={{ display: 'flex', gap: 2, p: 2, overflowX: 'auto', flex: 1, alignItems: 'flex-start' }}>
       {columns.map(col => {
-        const items = cards.filter(c => c.status === col)
+        const items = cards.filter(c => column(c, reviews[c.id]) === col)
         return (
           <Paper key={col} sx={{ width: 300, flexShrink: 0, p: 1.5, bgcolor: ALERT.has(col) ? 'warning.main' : undefined }}>
             <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 1.5 }}>
