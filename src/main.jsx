@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { highlightRows, langOf } from './highlight.js'
 import CheckIcon from '@mui/icons-material/Check'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import CloseIcon from '@mui/icons-material/Close'
@@ -269,6 +270,19 @@ function InlineThread({ mr, thread, onChanged, onError }) {
 const ROW_BG = { add: 'rgba(46,160,67,0.15)', del: 'rgba(248,81,73,0.15)', hunk: 'rgba(56,139,253,0.1)' }
 const NUM_BG = { add: 'rgba(46,160,67,0.3)', del: 'rgba(248,81,73,0.3)' }
 const SIGN = { add: '+', del: '-', ctx: ' ' }
+
+// GitHub's syntax colors for highlight.js classes
+const tokenColors = c => ({
+  '& .hljs-keyword, & .hljs-doctag, & .hljs-template-tag, & .hljs-type, & .hljs-variable.language_': { color: c.keyword },
+  '& .hljs-title, & .hljs-title.class_, & .hljs-title.function_': { color: c.title },
+  '& .hljs-attr, & .hljs-attribute, & .hljs-literal, & .hljs-meta, & .hljs-number, & .hljs-operator, & .hljs-variable, & .hljs-selector-attr, & .hljs-selector-class, & .hljs-selector-id': { color: c.constant },
+  '& .hljs-regexp, & .hljs-string, & .hljs-meta .hljs-string': { color: c.string },
+  '& .hljs-built_in, & .hljs-symbol': { color: c.builtin },
+  '& .hljs-comment, & .hljs-code, & .hljs-formula': { color: c.comment },
+  '& .hljs-name, & .hljs-quote, & .hljs-selector-tag, & .hljs-selector-pseudo, & .hljs-section': { color: c.tag },
+})
+const LIGHT_TOKENS = tokenColors({ keyword: '#cf222e', title: '#8250df', constant: '#0550ae', string: '#0a3069', builtin: '#953800', comment: '#6e7781', tag: '#116329' })
+const DARK_TOKENS = tokenColors({ keyword: '#ff7b72', title: '#d2a8ff', constant: '#79c0ff', string: '#a5d6ff', builtin: '#ffa657', comment: '#8b949e', tag: '#7ee787' })
 const rowKey = r => r.type === 'del' ? `o${r.old}` : `n${r.new}`
 const lineLabel = r => r.type === 'del' ? `L${r.old}` : `R${r.new}` // GitHub's names: L = old side, R = new side
 const SELECTED_BG = 'rgba(187,128,9,0.25)'
@@ -305,6 +319,7 @@ function FileDiff({ id, mr, refs, file, threads, viewed, onViewed, onChanged, on
     setDraft({ a: i, b: i })
     setDragging(true)
   }
+  const html = useMemo(() => highlightRows(file.rows, langOf(file.newPath)), [file])
   const lo = draft && Math.min(draft.a, draft.b)
   const hi = draft && Math.max(draft.a, draft.b)
   useEffect(() => setOpen(!viewed), [viewed]) // marking a file viewed folds it, like GitHub
@@ -336,7 +351,7 @@ function FileDiff({ id, mr, refs, file, threads, viewed, onViewed, onChanged, on
               {file.tooLarge ? 'This diff is too large to show.' : 'No text changes (binary, empty or mode change only).'}
             </Typography>
           ) : (
-            <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: 12, lineHeight: '20px', '& td': { p: 0, verticalAlign: 'top' } }}>
+            <Box component="table" sx={theme => ({ width: '100%', borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: 12, lineHeight: '20px', '& td': { p: 0, verticalAlign: 'top' }, ...LIGHT_TOKENS, ...theme.applyStyles('dark', DARK_TOKENS) })}>
               <tbody>
                 {file.rows.map((r, i) => r.type === 'hunk' ? (
                   <Box component="tr" key={i} sx={{ bgcolor: ROW_BG.hunk, color: 'text.secondary' }}>
@@ -351,7 +366,9 @@ function FileDiff({ id, mr, refs, file, threads, viewed, onViewed, onChanged, on
                       <Box component="td" sx={{ position: 'relative', pl: 3, pr: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
                         <IconButton className="add-comment" title="Add a comment on this line. Drag to select more lines; shift-click to extend." onMouseDown={e => pick(i, e)}
                           sx={{ visibility: 'hidden', position: 'absolute', left: 0, top: 0, width: 20, height: 20, borderRadius: 1, fontSize: 14, color: 'common.white', bgcolor: 'primary.main', '&:hover': { bgcolor: 'primary.dark' } }}>+</IconButton>
-                        <Box component="span" sx={{ userSelect: 'none', mr: 1 }}>{SIGN[r.type]}</Box>{r.text}
+                        <Box component="span" sx={{ userSelect: 'none', mr: 1 }}>{SIGN[r.type]}</Box>
+                        {/* hljs escapes the code and adds only <span class> tags, so this HTML is safe */}
+                        {html[i] !== undefined ? <span dangerouslySetInnerHTML={{ __html: html[i] }} /> : r.text}
                       </Box>
                     </Box>
                     {(byRow[rowKey(r)] || (i === hi && !dragging)) && (
