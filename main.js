@@ -3,10 +3,16 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { approve, details, fetchBoard } from './gitlab.js'
 import { ask, reviewPrompt } from './reviewer.js'
+import { execFileSync } from 'node:child_process'
 
 // keep the data folder named after the package, so the rename does not lose the saved token and reviews
 app.setPath('userData', app.getPath('userData'))
 app.setName('Task Bar')
+
+// opened from Finder, the app gets a short PATH and cannot find claude, codex or glab; use the login shell's PATH
+if (app.isPackaged) {
+  try { process.env.PATH = execFileSync(process.env.SHELL || '/bin/zsh', ['-ilc', 'printf %s "$PATH"'], { encoding: 'utf8', timeout: 5000 }) } catch {}
+}
 
 const POLL_MS = 2 * 60 * 1000
 const ALERT = new Set(['Needs re-review', 'Has feedback'])

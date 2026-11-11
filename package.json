@@ -8,7 +8,8 @@
     "dev": "electron .",
     "build": "vite build",
     "start": "vite build && electron . --prod",
-    "test": "node --test"
+    "test": "node --test",
+    "dist": "vite build && electron-builder --mac dir"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -23,6 +24,27 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^6.3.0",
     "electron": "^45.3.0",
+    "electron-builder": "^26.18.0",
     "vite": "^8.3.8"
+  },
+  "build": {
+    "appId": "com.local.taskbar",
+    "productName": "Task Bar",
+    "files": [
+      "main.js",
+      "gitlab.js",
+      "reviewer.js",
+      "preload.cjs",
+      "icon.png",
+      "dist/**"
+    ],
+    "mac": {
+      "icon": "icon.png",
+      "target": "dir",
+      "identity": null
+    },
+    "directories": {
+      "output": "release"
+    }
   }
 }
