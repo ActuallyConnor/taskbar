@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('api', {
   details: mr => ipcRenderer.invoke('mr:details', mrId(mr)),
   changes: mr => ipcRenderer.invoke('mr:changes', mrId(mr)),
   comment: (mr, c) => ipcRenderer.invoke('mr:comment', mrId(mr), c),
+  note: (mr, body) => ipcRenderer.invoke('mr:note', mrId(mr), body),
   reply: (mr, id, body) => ipcRenderer.invoke('mr:reply', mrId(mr), id, body),
   resolve: (mr, id, resolved) => ipcRenderer.invoke('mr:resolve', mrId(mr), id, resolved),
   approveMr: mr => ipcRenderer.invoke('mr:approve', mrId(mr)),

@@ -248,14 +248,14 @@ function Composer({ submit, onDone, onCancel, onError, label = 'Comment', placeh
   )
 }
 
-function InlineThread({ mr, thread, onChanged, onError }) {
+function InlineThread({ mr, thread, onChanged, onError, inline = true }) {
   const [busy, setBusy] = useState(false)
   const toggle = () => {
     setBusy(true)
     window.api.resolve(mr, thread.id, !thread.resolved).then(onChanged, e => onError(`Resolve failed: ${errText(e)}`)).finally(() => setBusy(false))
   }
   return (
-    <Thread thread={thread} inline>
+    <Thread thread={thread} inline={inline}>
       <Stack spacing={1} sx={{ mt: 1 }}>
         <Composer label="Reply" placeholder="Reply…" submit={body => window.api.reply(mr, thread.id, body)} onDone={onChanged} onError={onError} />
         {thread.resolvable && (
@@ -479,12 +479,12 @@ function FullView({ mr, details, review, onError, onChanged }) {
         </Tabs>
         <ApproveButton mr={mr} onError={onError} />
       </Stack>
-      {tab === 'files' ? <Changes mr={mr} details={details} onChanged={onChanged} onError={onError} /> : <Overview mr={mr} details={details} review={review} onError={onError} />}
+      {tab === 'files' ? <Changes mr={mr} details={details} onChanged={onChanged} onError={onError} /> : <Overview mr={mr} details={details} review={review} onChanged={onChanged} onError={onError} />}
     </Box>
   )
 }
 
-function Overview({ mr, details, review, onError }) {
+function Overview({ mr, details, review, onChanged, onError }) {
   return (
     <Box sx={{ flex: 1, overflow: 'auto' }}>
       <Container maxWidth="md" sx={{ py: 3 }}>
@@ -512,7 +512,8 @@ function Overview({ mr, details, review, onError }) {
             <Typography variant="h6" gutterBottom>Comments</Typography>
             {details?.threads ? (
               <Stack spacing={2}>
-                {details.threads.length ? details.threads.map(t => <Thread key={t.id} thread={t} />) : <Typography color="text.secondary">No comments.</Typography>}
+                {details.threads.length ? details.threads.map(t => <InlineThread key={t.id} mr={mr} thread={t} inline={false} onChanged={onChanged} onError={onError} />) : <Typography color="text.secondary">No comments.</Typography>}
+                <Composer submit={body => window.api.note(mr, body)} onDone={onChanged} onError={onError} />
               </Stack>
             ) : <Activity details={details} />}
           </Box>

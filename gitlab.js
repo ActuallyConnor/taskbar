@@ -136,6 +136,10 @@ export const comment = (config, projectId, iid, { refs, oldPath, newPath, start,
     },
   })
 
+// New thread on the MR itself, not on a diff line
+export const note = (config, projectId, iid, body) =>
+  client(config)(`/projects/${projectId}/merge_requests/${iid}/discussions`, 'POST', { body })
+
 export const reply = (config, projectId, iid, discussionId, body) =>
   client(config)(`/projects/${projectId}/merge_requests/${iid}/discussions/${discussionId}/notes`, 'POST', { body })
 

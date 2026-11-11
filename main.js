@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, Notification, safeStorage, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import { approve, changes, comment, details, fetchBoard, reply, resolve } from './gitlab.js'
+import { approve, changes, comment, details, fetchBoard, note, reply, resolve } from './gitlab.js'
 import { ask, reviewPrompt } from './reviewer.js'
 import { execFileSync } from 'node:child_process'
 
@@ -151,6 +151,7 @@ const row = r => {
 ipcMain.handle('mr:comment', (_e, mr, c) => comment(loadConfig(), ...mrId(mr), {
   refs: c.refs, oldPath: String(c.oldPath), newPath: String(c.newPath), start: row(c.start), end: row(c.end), body: text(c.body),
 }))
+ipcMain.handle('mr:note', (_e, mr, body) => note(loadConfig(), ...mrId(mr), text(body)))
 ipcMain.handle('mr:reply', (_e, mr, id, body) => reply(loadConfig(), ...mrId(mr), discussion(id), text(body)))
 ipcMain.handle('mr:resolve', (_e, mr, id, resolved) => resolve(loadConfig(), ...mrId(mr), discussion(id), resolved))
 ipcMain.handle('mr:approve', async (_e, mr) => {
