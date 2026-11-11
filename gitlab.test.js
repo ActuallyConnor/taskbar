@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { reviewStatus, myStatus, parseDiff } from './gitlab.js'
+import { reviewStatus, myStatus, parseDiff, lineCode } from './gitlab.js'
 
 const me = { id: 1, username: 'me' }
 const author = { id: 2 }
@@ -41,9 +41,11 @@ test('parseDiff', () => {
   assert.deepEqual(rows, [
     { type: 'hunk', text: '@@ -10,3 +10,3 @@ fn' },
     { type: 'ctx', old: 10, new: 10, text: 'a' },
-    { type: 'del', old: 11, text: 'b' },
-    { type: 'add', new: 11, text: 'c' },
+    { type: 'del', old: 11, pos: [11, 11], text: 'b' },
+    { type: 'add', new: 11, pos: [12, 11], text: 'c' },
     { type: 'ctx', old: 12, new: 12, text: '' },
   ])
-  assert.deepEqual(parseDiff('@@ -0,0 +1 @@\n+x'), [{ type: 'hunk', text: '@@ -0,0 +1 @@' }, { type: 'add', new: 1, text: 'x' }])
+  assert.deepEqual(parseDiff('@@ -0,0 +1 @@\n+x'), [{ type: 'hunk', text: '@@ -0,0 +1 @@' }, { type: 'add', new: 1, pos: [0, 1], text: 'x' }])
+  assert.match(lineCode('a.js', rows[3]), /^[0-9a-f]{40}_12_11$/)
+  assert.match(lineCode('a.js', rows[1]), /_10_10$/)
 })

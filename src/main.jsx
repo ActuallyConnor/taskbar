@@ -206,6 +206,9 @@ function Thread({ thread, inline, children }) {
           {thread.resolvable && <Chip size="small" label={thread.resolved ? 'Resolved' : 'Open'} color={thread.resolved ? 'success' : 'warning'} />}
         </Stack>
       )}
+      {inline && thread.position?.lineRange && (
+        <Typography variant="caption" color="text.secondary">Comment on lines {thread.position.lineRange.join(' to ')}</Typography>
+      )}
       <Stack divider={<Divider />} spacing={1}>
         {thread.notes.map(n => (
           <Box key={n.id}>
@@ -267,6 +270,8 @@ const ROW_BG = { add: 'rgba(46,160,67,0.15)', del: 'rgba(248,81,73,0.15)', hunk:
 const NUM_BG = { add: 'rgba(46,160,67,0.3)', del: 'rgba(248,81,73,0.3)' }
 const SIGN = { add: '+', del: '-', ctx: ' ' }
 const rowKey = r => r.type === 'del' ? `o${r.old}` : `n${r.new}`
+const lineLabel = r => r.type === 'del' ? `L${r.old}` : `R${r.new}` // GitHub's names: L = old side, R = new side
+const SELECTED_BG = 'rgba(187,128,9,0.25)'
 const threadKey = p => p.newLine ? `n${p.newLine}` : `o${p.oldLine}`
 const diffStat = f => ({ add: f.rows.filter(r => r.type === 'add').length, del: f.rows.filter(r => r.type === 'del').length })
 
@@ -283,7 +288,25 @@ const numCell = type => ({ width: '1%', minWidth: 48, px: 1, textAlign: 'right',
 
 function FileDiff({ id, mr, refs, file, threads, viewed, onViewed, onChanged, onError }) {
   const [open, setOpen] = useState(!viewed)
-  const [draft, setDraft] = useState(null) // row key with an open "new comment" box
+  // selected rows for a new comment: a = row where you started, b = row where you stopped. Drag the + or shift-click to make a range.
+  const [draft, setDraft] = useState(null)
+  const [dragging, setDragging] = useState(false)
+  useEffect(() => {
+    if (!dragging) return
+    const up = () => setDragging(false)
+    window.addEventListener('mouseup', up)
+    return () => window.removeEventListener('mouseup', up)
+  }, [dragging])
+  // a range must stay inside one hunk; GitLab cannot place it across hidden lines
+  const extend = i => setDraft(d => d && !file.rows.slice(Math.min(d.a, i), Math.max(d.a, i) + 1).some(r => r.type === 'hunk') ? { ...d, b: i } : d)
+  const pick = (i, e) => {
+    e.preventDefault() // no text selection while dragging
+    if (e.shiftKey && draft) return extend(i)
+    setDraft({ a: i, b: i })
+    setDragging(true)
+  }
+  const lo = draft && Math.min(draft.a, draft.b)
+  const hi = draft && Math.max(draft.a, draft.b)
   useEffect(() => setOpen(!viewed), [viewed]) // marking a file viewed folds it, like GitHub
   // a thread made on an older push may point at lines that moved; show it above the diff as outdated
   const current = threads.filter(t => t.position.headSha === refs.head_sha)
@@ -321,24 +344,30 @@ function FileDiff({ id, mr, refs, file, threads, viewed, onViewed, onChanged, on
                   </Box>
                 ) : (
                   <Fragment key={i}>
-                    <Box component="tr" sx={{ bgcolor: ROW_BG[r.type], '&:hover .add-comment': { visibility: 'visible' } }}>
-                      <Box component="td" sx={numCell(r.type)}>{r.old}</Box>
-                      <Box component="td" sx={numCell(r.type)}>{r.new}</Box>
+                    <Box component="tr" onMouseEnter={() => dragging && extend(i)}
+                      sx={{ bgcolor: draft && i >= lo && i <= hi ? SELECTED_BG : ROW_BG[r.type], '&:hover .add-comment': { visibility: 'visible' } }}>
+                      <Box component="td" sx={{ ...numCell(r.type), cursor: 'pointer' }} onMouseDown={e => pick(i, e)}>{r.old}</Box>
+                      <Box component="td" sx={{ ...numCell(r.type), cursor: 'pointer' }} onMouseDown={e => pick(i, e)}>{r.new}</Box>
                       <Box component="td" sx={{ position: 'relative', pl: 3, pr: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                        <IconButton className="add-comment" title="Add a comment on this line" onClick={() => setDraft(rowKey(r))}
+                        <IconButton className="add-comment" title="Add a comment on this line. Drag to select more lines; shift-click to extend." onMouseDown={e => pick(i, e)}
                           sx={{ visibility: 'hidden', position: 'absolute', left: 0, top: 0, width: 20, height: 20, borderRadius: 1, fontSize: 14, color: 'common.white', bgcolor: 'primary.main', '&:hover': { bgcolor: 'primary.dark' } }}>+</IconButton>
                         <Box component="span" sx={{ userSelect: 'none', mr: 1 }}>{SIGN[r.type]}</Box>{r.text}
                       </Box>
                     </Box>
-                    {(byRow[rowKey(r)] || draft === rowKey(r)) && (
+                    {(byRow[rowKey(r)] || (i === hi && !dragging)) && (
                       <tr>
                         <Box component="td" colSpan={3} sx={{ typography: 'body2', p: '8px !important', borderTop: 1, borderBottom: 1, borderColor: 'divider' }}>
                           <Stack spacing={1} sx={{ maxWidth: 900 }}>
                             {byRow[rowKey(r)]?.map(t => <Fragment key={t.id}>{thread({ thread: t })}</Fragment>)}
-                            {draft === rowKey(r) && (
+                            {i === hi && !dragging && (
                               <Paper variant="outlined" sx={{ p: 1.5 }}>
+                                {lo !== hi && (
+                                  <Typography variant="caption" color="text.secondary" component="div" sx={{ mb: 1 }}>
+                                    Commenting on lines {lineLabel(file.rows[lo])} to {lineLabel(r)}
+                                  </Typography>
+                                )}
                                 <Composer label="Add comment" onCancel={() => setDraft(null)} onError={onError}
-                                  submit={body => window.api.comment(mr, { refs, oldPath: file.oldPath, newPath: file.newPath, oldLine: r.old, newLine: r.new, body })}
+                                  submit={body => window.api.comment(mr, { refs, oldPath: file.oldPath, newPath: file.newPath, start: file.rows[lo], end: r, body })}
                                   onDone={() => { setDraft(null); onChanged() }} />
                               </Paper>
                             )}

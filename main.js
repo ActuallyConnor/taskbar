@@ -144,8 +144,12 @@ ipcMain.handle('mr:changes', (_e, mr) => changes(loadConfig(), ...mrId(mr)))
 const text = s => { if (typeof s !== 'string' || !s.trim()) throw new Error('Comment is empty'); return s }
 const discussion = id => { if (!/^[0-9a-f]+$/.test(id)) throw new Error('Bad thread id'); return id }
 const line = n => { if (n !== undefined && !Number.isInteger(n)) throw new Error('Bad line'); return n }
+const row = r => {
+  if (!['add', 'del', 'ctx'].includes(r?.type)) throw new Error('Bad line')
+  return { type: r.type, old: line(r.old), new: line(r.new), pos: r.pos && [line(r.pos[0]), line(r.pos[1])] }
+}
 ipcMain.handle('mr:comment', (_e, mr, c) => comment(loadConfig(), ...mrId(mr), {
-  refs: c.refs, oldPath: String(c.oldPath), newPath: String(c.newPath), oldLine: line(c.oldLine), newLine: line(c.newLine), body: text(c.body),
+  refs: c.refs, oldPath: String(c.oldPath), newPath: String(c.newPath), start: row(c.start), end: row(c.end), body: text(c.body),
 }))
 ipcMain.handle('mr:reply', (_e, mr, id, body) => reply(loadConfig(), ...mrId(mr), discussion(id), text(body)))
 ipcMain.handle('mr:resolve', (_e, mr, id, resolved) => resolve(loadConfig(), ...mrId(mr), discussion(id), resolved))

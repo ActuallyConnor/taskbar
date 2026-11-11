@@ -70,7 +70,10 @@ export async function details(config, projectId, iid) {
     .map(d => ({
       id: d.id,
       file: where(d.notes[0].position),
-      position: d.notes[0].position && (p => ({ path: p.new_path, oldLine: p.old_line, newLine: p.new_line, headSha: p.head_sha }))(d.notes[0].position),
+      position: d.notes[0].position && (p => ({
+        path: p.new_path, oldLine: p.old_line, newLine: p.new_line, headSha: p.head_sha,
+        lineRange: p.line_range && [p.line_range.start, p.line_range.end].map(l => l.new_line ?? l.old_line),
+      }))(d.notes[0].position),
       resolvable: d.notes.some(n => n.resolvable),
       resolved: d.notes.every(n => !n.resolvable || n.resolved),
       notes: d.notes.filter(n => !n.system).map(n => ({ id: n.id, author: user(n.author), body: n.body, createdAt: n.created_at })),
@@ -87,8 +90,9 @@ export function parseDiff(diff) {
     const h = raw.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
     if (h) { o = +h[1]; n = +h[2]; rows.push({ type: 'hunk', text: raw }); continue }
     const text = raw.slice(1)
-    if (raw[0] === '+') rows.push({ type: 'add', new: n++, text })
-    else if (raw[0] === '-') rows.push({ type: 'del', old: o++, text })
+    // pos = GitLab's [old, new] counters at this line; a multi-line comment needs them for the line_code
+    if (raw[0] === '+') rows.push({ type: 'add', new: n, pos: [o, n++], text })
+    else if (raw[0] === '-') rows.push({ type: 'del', old: o, pos: [o++, n], text })
     else if (raw[0] === ' ') rows.push({ type: 'ctx', old: o++, new: n++, text })
     // '\ No newline at end of file' and the trailing empty string are dropped
   }
@@ -116,13 +120,19 @@ export async function changes(config, projectId, iid) {
   }
 }
 
-// New thread on one diff line. Added line: newLine only. Removed line: oldLine only. Context line: both.
-export const comment = (config, projectId, iid, { refs, oldPath, newPath, oldLine, newLine, body }) =>
+// GitLab's id for one diff line: sha1(path)_oldPos_newPos
+export const lineCode = (path, r) => `${createHash('sha1').update(path).digest('hex')}_${(r.pos ?? [r.old, r.new]).join('_')}`
+const rangeEnd = (path, r) => ({ line_code: lineCode(path, r), type: { add: 'new', del: 'old', ctx: null }[r.type], old_line: r.old, new_line: r.new })
+
+// New thread on diff rows start..end (the same row for a one-line comment). GitLab puts the thread at the end row.
+// Added line: new_line only. Removed line: old_line only. Context line: both.
+export const comment = (config, projectId, iid, { refs, oldPath, newPath, start, end, body }) =>
   client(config)(`/projects/${projectId}/merge_requests/${iid}/discussions`, 'POST', {
     body,
     position: {
       position_type: 'text', base_sha: refs.base_sha, start_sha: refs.start_sha, head_sha: refs.head_sha,
-      old_path: oldPath, new_path: newPath, old_line: oldLine, new_line: newLine,
+      old_path: oldPath, new_path: newPath, old_line: end.old, new_line: end.new,
+      ...((start.old !== end.old || start.new !== end.new) && { line_range: { start: rangeEnd(newPath, start), end: rangeEnd(newPath, end) } }),
     },
   })
 
