@@ -21,6 +21,8 @@ const BOARDS = {
   mine: { label: 'My MRs', columns: ['Draft', 'In review', 'Has feedback', 'Ready to merge'] },
 }
 const ALERT = new Set(['Needs re-review', 'Has feedback'])
+// columns drawn in orange; Needs re-review still counts in the badge, it just is not coloured
+const COLOURED = new Set(['Has feedback'])
 
 const when = iso => new Date(iso).toLocaleString()
 
@@ -154,7 +156,7 @@ function Board({ columns, cards, onSelect, reviews, onError }) {
       {columns.map(col => {
         const items = cards.filter(c => column(c, reviews[c.id]) === col)
         return (
-          <Paper key={col} sx={{ width: 300, flexShrink: 0, p: 1.5, bgcolor: ALERT.has(col) ? 'warning.main' : undefined, outline: over === col ? 2 : 0, outlineColor: 'primary.main' }}
+          <Paper key={col} sx={{ width: 300, flexShrink: 0, p: 1.5, bgcolor: COLOURED.has(col) ? 'warning.main' : undefined, outline: over === col ? 2 : 0, outlineColor: 'primary.main' }}
             {...(col !== 'AI reviewed' && { onDragOver: e => (e.preventDefault(), setOver(col)), onDragLeave: () => setOver(null), onDrop: e => drop(e, col) })}>
             <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 1.5 }}>
               <Typography variant="subtitle2">{col}</Typography>
@@ -186,7 +188,7 @@ function Sidebar({ mr, details, review, onClose, onFull, onError }) {
             <Typography variant="h6">{mr.title}</Typography>
           </Box>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            <Chip size="small" label={column(mr, review)} color={ALERT.has(mr.status) ? 'warning' : 'default'} />
+            <Chip size="small" label={column(mr, review)} color={COLOURED.has(mr.status) ? 'warning' : 'default'} />
             <Person user={mr.author} />
           </Stack>
           <Box>
@@ -501,7 +503,7 @@ function Overview({ mr, details, review, onChanged, onError }) {
             <Typography variant="caption" color="text.secondary">{mr.ref}</Typography>
             <Typography variant="h5" gutterBottom>{mr.title}</Typography>
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-              <Chip size="small" label={column(mr, review)} color={ALERT.has(mr.status) ? 'warning' : 'default'} />
+              <Chip size="small" label={column(mr, review)} color={COLOURED.has(mr.status) ? 'warning' : 'default'} />
               <Person user={mr.author} />
               <Box sx={{ flex: 1 }} />
               {review?.busy && <CircularProgress size={18} titleAccess="AI review running" />}
