@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('api', {
   note: (mr, body) => ipcRenderer.invoke('mr:note', mrId(mr), body),
   reply: (mr, id, body) => ipcRenderer.invoke('mr:reply', mrId(mr), id, body),
   resolve: (mr, id, resolved) => ipcRenderer.invoke('mr:resolve', mrId(mr), id, resolved),
+  move: (id, status) => ipcRenderer.invoke('mr:move', id, status),
   approveMr: mr => ipcRenderer.invoke('mr:approve', mrId(mr)),
   getReviews: () => ipcRenderer.invoke('review:get'),
   startReview: (mr, provider) => ipcRenderer.invoke('review:start', mrId(mr), provider),

@@ -118,7 +118,7 @@ function Reviewers({ mr, details }) {
 
 function MrCard({ mr, onSelect, review }) {
   return (
-    <Card variant="outlined">
+    <Card variant="outlined" draggable onDragStart={e => e.dataTransfer.setData('text/plain', String(mr.id))}>
       <CardActionArea onClick={() => onSelect(mr.id)} sx={{ p: 1.5 }}>
         <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="caption" color="text.secondary">{mr.ref}</Typography>
@@ -141,13 +141,21 @@ function MrCard({ mr, onSelect, review }) {
 // Once you comment, GitLab status moves it on as usual.
 const column = (mr, review) => mr.status === 'To review' && review?.messages.length > 0 ? 'AI reviewed' : mr.status
 
-function Board({ columns, cards, onSelect, reviews }) {
+// Drag a card to another column when the computed status is wrong. It stays there until the MR has new activity.
+function Board({ columns, cards, onSelect, reviews, onError }) {
+  const [over, setOver] = useState(null)
+  const drop = (e, col) => {
+    setOver(null)
+    const id = Number(e.dataTransfer.getData('text/plain'))
+    if (cards.some(c => c.id === id)) window.api.move(id, col).catch(e => onError(`Move failed: ${errText(e)}`))
+  }
   return (
     <Box sx={{ display: 'flex', gap: 2, p: 2, overflowX: 'auto', flex: 1, alignItems: 'flex-start' }}>
       {columns.map(col => {
         const items = cards.filter(c => column(c, reviews[c.id]) === col)
         return (
-          <Paper key={col} sx={{ width: 300, flexShrink: 0, p: 1.5, bgcolor: ALERT.has(col) ? 'warning.main' : undefined }}>
+          <Paper key={col} sx={{ width: 300, flexShrink: 0, p: 1.5, bgcolor: ALERT.has(col) ? 'warning.main' : undefined, outline: over === col ? 2 : 0, outlineColor: 'primary.main' }}
+            {...(col !== 'AI reviewed' && { onDragOver: e => (e.preventDefault(), setOver(col)), onDragLeave: () => setOver(null), onDrop: e => drop(e, col) })}>
             <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 1.5 }}>
               <Typography variant="subtitle2">{col}</Typography>
               <Chip size="small" label={items.length} />
@@ -648,7 +656,7 @@ function App() {
       {actionError && <Alert severity="error" onClose={() => setActionError(null)}>{actionError}</Alert>}
       {showFull
         ? <FullView key={mr.id} mr={mr} details={details} review={reviews[mr.id]} onError={setActionError} onChanged={() => setDetailsTick(t => t + 1)} />
-        : board && <Board columns={BOARDS[tab].columns} cards={board[tab]} onSelect={select} reviews={reviews} />}
+        : board && <Board columns={BOARDS[tab].columns} cards={board[tab]} onSelect={select} reviews={reviews} onError={setActionError} />}
       <Sidebar mr={showFull ? null : mr} details={details} review={mr && reviews[mr.id]} onClose={close} onFull={() => setFull(true)} onError={setActionError} />
       <Settings open={settingsOpen || !!state.needsConfig} onClose={() => setSettingsOpen(false)} />
     </Box>

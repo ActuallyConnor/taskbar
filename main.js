@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, Notification, safeStorage, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import { approve, changes, comment, details, fetchBoard, note, reply, resolve } from './gitlab.js'
+import { applyMoves, approve, changes, comment, details, fetchBoard, note, reply, resolve } from './gitlab.js'
 import { ask, reviewPrompt } from './reviewer.js'
 import { execFileSync } from 'node:child_process'
 
@@ -74,6 +74,11 @@ function sendNotifications() {
   win?.webContents.send('notifications', notifications)
 }
 
+// Cards you dragged to another column, keyed by card id: { status, updatedAt }. See applyMoves.
+const movesPath = () => path.join(app.getPath('userData'), 'moves.json')
+const moves = (() => { try { return new Map(Object.entries(JSON.parse(fs.readFileSync(movesPath(), 'utf8'))).map(([id, m]) => [Number(id), m])) } catch { return new Map() } })()
+const saveMoves = () => fs.writeFileSync(movesPath(), JSON.stringify(Object.fromEntries(moves)), { mode: 0o600 })
+
 const openMr = id => (win.show(), win.focus(), win.webContents.send('select', id))
 
 function push(card, title) {
@@ -107,6 +112,11 @@ async function load() {
   if (!config) return (state = { needsConfig: true })
   try {
     const board = await fetchBoard(config)
+    const stale = applyMoves([...board.reviewing, ...board.mine], moves)
+    // also forget moves for MRs that left the board
+    const ids = new Set([...board.reviewing, ...board.mine].map(c => c.id))
+    const gone = [...moves.keys()].filter(id => !ids.has(id))
+    if (stale.length || gone.length) ([...stale, ...gone].forEach(id => moves.delete(id)), saveMoves())
     notify(board)
     // drop chats for MRs that left the board (merged or closed)
     const onBoard = new Set([...board.reviewing, ...board.mine].map(c => c.id))
@@ -154,6 +164,18 @@ ipcMain.handle('mr:comment', (_e, mr, c) => comment(loadConfig(), ...mrId(mr), {
 ipcMain.handle('mr:note', (_e, mr, body) => note(loadConfig(), ...mrId(mr), text(body)))
 ipcMain.handle('mr:reply', (_e, mr, id, body) => reply(loadConfig(), ...mrId(mr), discussion(id), text(body)))
 ipcMain.handle('mr:resolve', (_e, mr, id, resolved) => resolve(loadConfig(), ...mrId(mr), discussion(id), resolved))
+const MOVABLE = new Set(['To review', 'Needs re-review', 'Waiting on author', 'Approved', 'Draft', 'In review', 'Has feedback', 'Ready to merge'])
+ipcMain.handle('mr:move', (_e, id, status) => {
+  if (!MOVABLE.has(status)) throw new Error('Bad column')
+  const card = state.board && [...state.board.reviewing, ...state.board.mine].find(c => c.id === id)
+  if (!card) throw new Error('MR is not on the board')
+  moves.set(id, { status, updatedAt: card.updatedAt })
+  saveMoves()
+  card.status = status
+  seen?.set(id, status) // a manual move is not news; do not notify for it
+  app.setBadgeCount([...state.board.reviewing, ...state.board.mine].filter(c => ALERT.has(c.status)).length)
+  win?.webContents.send('state', state)
+})
 ipcMain.handle('mr:approve', async (_e, mr) => {
   await approve(loadConfig(), ...mrId(mr))
   return refresh()

@@ -20,6 +20,19 @@ export function reviewStatus(mr, notes, me, approved = false) {
   return updated ? 'Needs re-review' : 'Waiting on author'
 }
 
+// A card you dragged to another column stays there until GitLab shows new activity on the MR (updatedAt changes).
+// Returns the ids whose move is now stale, so the caller can forget them.
+export function applyMoves(cards, moves) {
+  const stale = []
+  for (const c of cards) {
+    const m = moves.get(c.id)
+    if (!m) continue
+    if (m.updatedAt === c.updatedAt) c.status = m.status
+    else stale.push(c.id)
+  }
+  return stale
+}
+
 export function myStatus(mr, notes, me) {
   if (mr.draft) return 'Draft'
   const i = notes.findIndex(isMine(me))

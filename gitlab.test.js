@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { reviewStatus, myStatus, parseDiff, lineCode } from './gitlab.js'
+import { applyMoves, reviewStatus, myStatus, parseDiff, lineCode } from './gitlab.js'
 
 const me = { id: 1, username: 'me' }
 const author = { id: 2 }
@@ -48,4 +48,12 @@ test('parseDiff', () => {
   assert.deepEqual(parseDiff('@@ -0,0 +1 @@\n+x'), [{ type: 'hunk', text: '@@ -0,0 +1 @@' }, { type: 'add', new: 1, pos: [0, 1], text: 'x' }])
   assert.match(lineCode('a.js', rows[3]), /^[0-9a-f]{40}_12_11$/)
   assert.match(lineCode('a.js', rows[1]), /_10_10$/)
+})
+
+test('a moved card keeps its column until the MR has new activity', () => {
+  const cards = [{ id: 1, status: 'Needs re-review', updatedAt: 't1' }, { id: 2, status: 'Needs re-review', updatedAt: 't3' }]
+  const moves = new Map([[1, { status: 'Waiting on author', updatedAt: 't1' }], [2, { status: 'Waiting on author', updatedAt: 't2' }]])
+  assert.deepEqual(applyMoves(cards, moves), [2])
+  assert.equal(cards[0].status, 'Waiting on author')
+  assert.equal(cards[1].status, 'Needs re-review')
 })
