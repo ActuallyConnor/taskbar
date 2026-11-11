@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import CheckIcon from '@mui/icons-material/Check'
 import {
   Alert, AppBar, Avatar, Badge, Box, Button, ButtonGroup, Card, CardActionArea, Chip, CircularProgress, Container, CssBaseline, Dialog,
   DialogActions, DialogContent, DialogTitle, Divider, Drawer, LinearProgress, Paper, Stack, Tab, Tabs, TextField,
@@ -118,7 +119,11 @@ function MrCard({ mr, onSelect, review }) {
           <Typography variant="caption" color="text.secondary">{mr.ref}</Typography>
           {review?.busy
             ? <CircularProgress size={14} titleAccess="AI review running" />
-            : review?.messages.length > 0 && <Typography variant="caption" color="success.main" title="AI reviewed">✓ AI</Typography>}
+            : review?.messages.length > 0 && (
+              <Box title="AI reviewed" sx={{ width: 18, height: 18, borderRadius: '50%', bgcolor: 'success.main', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CheckIcon sx={{ fontSize: 14, color: 'common.white' }} />
+              </Box>
+            )}
         </Stack>
         <Typography variant="body2" sx={{ my: 0.5 }}>{mr.title}</Typography>
         <Person user={mr.author}>{mr.author.name} · {when(mr.updatedAt)}</Person>
