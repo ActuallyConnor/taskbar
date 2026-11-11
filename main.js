@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, Notification, safeStorage, shell } from 'e
 import fs from 'node:fs'
 import path from 'node:path'
 import { approve, details, fetchBoard } from './gitlab.js'
+import { ask, reviewPrompt } from './reviewer.js'
 
 const POLL_MS = 2 * 60 * 1000
 const ALERT = new Set(['Needs re-review', 'Has feedback'])
@@ -88,6 +89,45 @@ ipcMain.handle('mr:details', (_e, mr) => details(loadConfig(), ...mrId(mr)))
 ipcMain.handle('mr:approve', async (_e, mr) => {
   await approve(loadConfig(), ...mrId(mr))
   return refresh()
+})
+
+// AI reviews live here (not in the page) so they keep running and survive a reload. Keyed by card id.
+// ponytail: in memory only; lost when the app quits
+const reviews = new Map()
+const sendReviews = () => win?.webContents.send('reviews', Object.fromEntries(reviews))
+
+const cardFor = mr => {
+  const [projectId, iid] = mrId(mr)
+  const c = state.board && [...state.board.reviewing, ...state.board.mine].find(c => c.projectId === projectId && c.iid === iid)
+  if (!c) throw new Error('MR not on the board')
+  return c
+}
+
+function turn(id, prompt) {
+  const r = reviews.get(id)
+  r.busy = true
+  r.error = null
+  sendReviews()
+  ask(r.provider, prompt, r.session)
+    .then(({ session, text }) => { r.session = session; r.messages.push({ role: 'assistant', text }) })
+    .catch(e => { r.error = e.message })
+    .finally(() => { r.busy = false; sendReviews() })
+}
+
+ipcMain.handle('review:get', () => Object.fromEntries(reviews))
+ipcMain.handle('review:start', (_e, mr, provider) => {
+  const c = cardFor(mr)
+  if (!['claude', 'codex'].includes(provider)) throw new Error('Bad provider')
+  if (reviews.get(c.id)?.busy) return
+  reviews.set(c.id, { provider, messages: [], busy: false })
+  turn(c.id, reviewPrompt(c.url))
+})
+ipcMain.handle('review:ask', (_e, mr, question) => {
+  const c = cardFor(mr)
+  const r = reviews.get(c.id)
+  if (!r || r.busy || !r.session || !question?.trim()) return
+  r.messages.push({ role: 'user', text: question.trim() })
+  turn(c.id, question.trim())
 })
 
 app.whenReady().then(() => {

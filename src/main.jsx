@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
-  Alert, AppBar, Avatar, Badge, Box, Button, Card, CardActionArea, Chip, Container, CssBaseline, Dialog,
+  Alert, AppBar, Avatar, Badge, Box, Button, ButtonGroup, Card, CardActionArea, Chip, CircularProgress, Container, CssBaseline, Dialog,
   DialogActions, DialogContent, DialogTitle, Divider, Drawer, LinearProgress, Paper, Stack, Tab, Tabs, TextField,
   ThemeProvider, Toolbar, Typography, createTheme,
 } from '@mui/material'
@@ -54,6 +54,47 @@ function ApproveButton({ mr, onError }) {
   )
 }
 
+function ReviewButtons({ mr, review, onError, onStarted }) {
+  const start = provider => window.api.startReview(mr, provider).then(onStarted, e => onError(`AI review failed: ${e.message.split('Error: ').pop()}`))
+  return (
+    <ButtonGroup size="small" disabled={!!review?.busy}>
+      <Button onClick={() => start('claude')}>AI review: Claude</Button>
+      <Button onClick={() => start('codex')}>Codex</Button>
+    </ButtonGroup>
+  )
+}
+
+function ReviewChat({ mr, review }) {
+  const [question, setQuestion] = useState('')
+  if (!review) return null
+  const send = e => {
+    e.preventDefault()
+    window.api.askReview(mr, question)
+    setQuestion('')
+  }
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack spacing={2}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Typography variant="h6">AI review ({review.provider})</Typography>
+          {review.busy && <CircularProgress size={18} />}
+        </Stack>
+        {review.messages.map((m, i) => m.role === 'user'
+          ? <Box key={i} sx={{ p: 1, borderRadius: 1, bgcolor: 'action.hover', alignSelf: 'flex-end' }}><Typography variant="body2">{m.text}</Typography></Box>
+          : <Md key={i}>{m.text}</Md>)}
+        {review.busy && <Typography variant="body2" color="text.secondary">{review.messages.length ? 'Thinking…' : 'Reviewing… this can take a few minutes.'}</Typography>}
+        {review.error && <Alert severity="error">{review.error}</Alert>}
+        {review.session && (
+          <form onSubmit={send}>
+            <TextField fullWidth size="small" placeholder="Ask about the review" value={question}
+              onChange={e => setQuestion(e.target.value)} disabled={review.busy} />
+          </form>
+        )}
+      </Stack>
+    </Paper>
+  )
+}
+
 function Reviewers({ mr, details }) {
   if (!mr.reviewers.length) return <Typography variant="body2" color="text.secondary">No reviewers</Typography>
   return (
@@ -69,11 +110,14 @@ function Reviewers({ mr, details }) {
   )
 }
 
-function MrCard({ mr, onSelect }) {
+function MrCard({ mr, onSelect, reviewing }) {
   return (
     <Card variant="outlined">
       <CardActionArea onClick={() => onSelect(mr.id)} sx={{ p: 1.5 }}>
-        <Typography variant="caption" color="text.secondary">{mr.ref}</Typography>
+        <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="caption" color="text.secondary">{mr.ref}</Typography>
+          {reviewing && <CircularProgress size={14} titleAccess="AI review running" />}
+        </Stack>
         <Typography variant="body2" sx={{ my: 0.5 }}>{mr.title}</Typography>
         <Person user={mr.author}>{mr.author.name} · {when(mr.updatedAt)}</Person>
       </CardActionArea>
@@ -81,7 +125,7 @@ function MrCard({ mr, onSelect }) {
   )
 }
 
-function Board({ columns, cards, onSelect }) {
+function Board({ columns, cards, onSelect, reviews }) {
   return (
     <Box sx={{ display: 'flex', gap: 2, p: 2, overflowX: 'auto', flex: 1, alignItems: 'flex-start' }}>
       {columns.map(col => {
@@ -92,7 +136,7 @@ function Board({ columns, cards, onSelect }) {
               <Typography variant="subtitle2">{col}</Typography>
               <Chip size="small" label={items.length} />
             </Stack>
-            <Stack spacing={1}>{items.map(mr => <MrCard key={mr.id} mr={mr} onSelect={onSelect} />)}</Stack>
+            <Stack spacing={1}>{items.map(mr => <MrCard key={mr.id} mr={mr} onSelect={onSelect} reviewing={reviews[mr.id]?.busy} />)}</Stack>
           </Paper>
         )
       })}
@@ -108,7 +152,7 @@ function Activity({ details }) {
   return <Typography variant="body2">{comments} comments · {open} open threads</Typography>
 }
 
-function Sidebar({ mr, details, onClose, onFull, onError }) {
+function Sidebar({ mr, details, review, onClose, onFull, onError }) {
   return (
     <Drawer anchor="right" open={!!mr} onClose={onClose}>
       {mr && (
@@ -131,6 +175,7 @@ function Sidebar({ mr, details, onClose, onFull, onError }) {
             <Button size="small" onClick={() => window.open(mr.url)}>Open in browser</Button>
             <ApproveButton mr={mr} onError={onError} />
           </Stack>
+          <ReviewButtons mr={mr} review={review} onError={onError} onStarted={onFull} />
         </Stack>
       )}
     </Drawer>
@@ -158,7 +203,7 @@ function Thread({ thread }) {
   )
 }
 
-function FullView({ mr, details, onError }) {
+function FullView({ mr, details, review, onError }) {
   return (
     <Box sx={{ flex: 1, overflow: 'auto' }}>
       <Container maxWidth="md" sx={{ py: 3 }}>
@@ -170,9 +215,12 @@ function FullView({ mr, details, onError }) {
               <Chip size="small" label={mr.status} color={ALERT.has(mr.status) ? 'warning' : 'default'} />
               <Person user={mr.author} />
               <Box sx={{ flex: 1 }} />
+              {review?.busy && <CircularProgress size={18} titleAccess="AI review running" />}
+              <ReviewButtons mr={mr} review={review} onError={onError} />
               <ApproveButton mr={mr} onError={onError} />
             </Stack>
           </Box>
+          <ReviewChat mr={mr} review={review} />
           <Box>
             <Typography variant="subtitle2" gutterBottom>Reviewers</Typography>
             <Reviewers mr={mr} details={details} />
@@ -228,11 +276,12 @@ function App() {
   const [selectedId, setSelectedId] = useState(null)
   const [full, setFull] = useState(false)
   const [details, setDetails] = useState(null)
+  const [reviews, setReviews] = useState({})
 
   const refresh = () => { setLoading(true); window.api.refresh().then(setState).finally(() => setLoading(false)) }
   const select = id => { setDetails(null); setFull(false); setSelectedId(id) }
   const close = () => { setSelectedId(null); setFull(false) }
-  useEffect(() => { window.api.onState(setState); window.api.onSelect(select); refresh() }, [])
+  useEffect(() => { window.api.onState(setState); window.api.onSelect(select); window.api.onReviews(setReviews); window.api.getReviews().then(setReviews); refresh() }, [])
 
   const board = state.board
   // look the card up on every render so it follows the board (status changes, merged MRs disappear)
@@ -277,9 +326,9 @@ function App() {
       {state.error && <Alert severity="error">{state.error}</Alert>}
       {actionError && <Alert severity="error" onClose={() => setActionError(null)}>{actionError}</Alert>}
       {showFull
-        ? <FullView mr={mr} details={details} onError={setActionError} />
-        : board && <Board columns={BOARDS[tab].columns} cards={board[tab]} onSelect={select} />}
-      <Sidebar mr={showFull ? null : mr} details={details} onClose={close} onFull={() => setFull(true)} onError={setActionError} />
+        ? <FullView mr={mr} details={details} review={reviews[mr.id]} onError={setActionError} />
+        : board && <Board columns={BOARDS[tab].columns} cards={board[tab]} onSelect={select} reviews={reviews} />}
+      <Sidebar mr={showFull ? null : mr} details={details} review={mr && reviews[mr.id]} onClose={close} onFull={() => setFull(true)} onError={setActionError} />
       <Settings open={settingsOpen || !!state.needsConfig} onClose={() => setSettingsOpen(false)} />
     </Box>
   )
