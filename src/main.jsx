@@ -110,13 +110,15 @@ function Reviewers({ mr, details }) {
   )
 }
 
-function MrCard({ mr, onSelect, reviewing }) {
+function MrCard({ mr, onSelect, review }) {
   return (
     <Card variant="outlined">
       <CardActionArea onClick={() => onSelect(mr.id)} sx={{ p: 1.5 }}>
         <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="caption" color="text.secondary">{mr.ref}</Typography>
-          {reviewing && <CircularProgress size={14} titleAccess="AI review running" />}
+          {review?.busy
+            ? <CircularProgress size={14} titleAccess="AI review running" />
+            : review?.messages.length > 0 && <Typography variant="caption" color="success.main" title="AI reviewed">✓ AI</Typography>}
         </Stack>
         <Typography variant="body2" sx={{ my: 0.5 }}>{mr.title}</Typography>
         <Person user={mr.author}>{mr.author.name} · {when(mr.updatedAt)}</Person>
@@ -136,7 +138,7 @@ function Board({ columns, cards, onSelect, reviews }) {
               <Typography variant="subtitle2">{col}</Typography>
               <Chip size="small" label={items.length} />
             </Stack>
-            <Stack spacing={1}>{items.map(mr => <MrCard key={mr.id} mr={mr} onSelect={onSelect} reviewing={reviews[mr.id]?.busy} />)}</Stack>
+            <Stack spacing={1}>{items.map(mr => <MrCard key={mr.id} mr={mr} onSelect={onSelect} review={reviews[mr.id]} />)}</Stack>
           </Paper>
         )
       })}
