@@ -149,10 +149,14 @@ ipcMain.handle('review:ask', (_e, mr, question) => {
   turn(c.id, question.trim())
 })
 
+const icon = path.join(import.meta.dirname, 'icon.png')
+
 app.whenReady().then(() => {
+  app.dock?.setIcon(icon) // macOS ignores the window icon; set the Dock icon instead
   win = new BrowserWindow({
     width: 1300,
     height: 800,
+    icon,
     webPreferences: { preload: path.join(import.meta.dirname, 'preload.cjs') },
   })
   win.maximize() // fill the screen (not macOS full screen mode); the size above is the size when you un-maximize
