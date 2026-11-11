@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, Notification, safeStorage, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import { approve, details, fetchBoard } from './gitlab.js'
+import { approve, changes, comment, details, fetchBoard, reply, resolve } from './gitlab.js'
 import { ask, reviewPrompt } from './reviewer.js'
 import { execFileSync } from 'node:child_process'
 
@@ -140,6 +140,15 @@ ipcMain.handle('config:save', (_e, c) => {
 })
 ipcMain.handle('refresh', refresh)
 ipcMain.handle('mr:details', (_e, mr) => details(loadConfig(), ...mrId(mr)))
+ipcMain.handle('mr:changes', (_e, mr) => changes(loadConfig(), ...mrId(mr)))
+const text = s => { if (typeof s !== 'string' || !s.trim()) throw new Error('Comment is empty'); return s }
+const discussion = id => { if (!/^[0-9a-f]+$/.test(id)) throw new Error('Bad thread id'); return id }
+const line = n => { if (n !== undefined && !Number.isInteger(n)) throw new Error('Bad line'); return n }
+ipcMain.handle('mr:comment', (_e, mr, c) => comment(loadConfig(), ...mrId(mr), {
+  refs: c.refs, oldPath: String(c.oldPath), newPath: String(c.newPath), oldLine: line(c.oldLine), newLine: line(c.newLine), body: text(c.body),
+}))
+ipcMain.handle('mr:reply', (_e, mr, id, body) => reply(loadConfig(), ...mrId(mr), discussion(id), text(body)))
+ipcMain.handle('mr:resolve', (_e, mr, id, resolved) => resolve(loadConfig(), ...mrId(mr), discussion(id), resolved))
 ipcMain.handle('mr:approve', async (_e, mr) => {
   await approve(loadConfig(), ...mrId(mr))
   return refresh()

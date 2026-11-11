@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import CheckIcon from '@mui/icons-material/Check'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import CloseIcon from '@mui/icons-material/Close'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import NotificationsIcon from '@mui/icons-material/Notifications'
 import {
-  Alert, AppBar, Avatar, Badge, Box, Button, ButtonGroup, Card, CardActionArea, Chip, CircularProgress, Container, CssBaseline, Dialog,
-  DialogActions, DialogContent, DialogTitle, Divider, Drawer, IconButton, LinearProgress, List, ListItem, ListItemButton, ListItemText, Paper, Popover, Stack, Tab, Tabs, TextField,
+  Alert, AppBar, Avatar, Badge, Box, Button, ButtonGroup, Card, CardActionArea, Checkbox, Chip, CircularProgress, Container, CssBaseline, Dialog,
+  DialogActions, DialogContent, DialogTitle, Divider, Drawer, FormControlLabel, IconButton, LinearProgress, List, ListItem, ListItemButton, ListItemText, Paper, Popover, Stack, Tab, Tabs, TextField,
   ThemeProvider, Toolbar, Typography, createTheme,
 } from '@mui/material'
 
@@ -195,12 +197,12 @@ function Sidebar({ mr, details, review, onClose, onFull, onError }) {
   )
 }
 
-function Thread({ thread }) {
+function Thread({ thread, inline, children }) {
   return (
     <Paper variant="outlined" sx={{ p: 1.5 }}>
-      {(thread.file || thread.resolvable) && (
+      {((!inline && thread.file) || thread.resolvable) && (
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
-          {thread.file && <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{thread.file}</Typography>}
+          {!inline && thread.file && <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{thread.file}</Typography>}
           {thread.resolvable && <Chip size="small" label={thread.resolved ? 'Resolved' : 'Open'} color={thread.resolved ? 'success' : 'warning'} />}
         </Stack>
       )}
@@ -212,11 +214,231 @@ function Thread({ thread }) {
           </Box>
         ))}
       </Stack>
+      {children}
     </Paper>
   )
 }
 
-function FullView({ mr, details, review, onError }) {
+const errText = e => e.message.split('Error: ').pop()
+
+// Text box for a new comment or a reply. Cmd+Enter sends, like GitHub.
+function Composer({ submit, onDone, onCancel, onError, label = 'Comment', placeholder = 'Leave a comment' }) {
+  const [body, setBody] = useState('')
+  const [busy, setBusy] = useState(false)
+  const send = () => {
+    if (!body.trim() || busy) return
+    setBusy(true)
+    submit(body).then(() => { setBody(''); onDone() }, e => onError(`Comment failed: ${errText(e)}`)).finally(() => setBusy(false))
+  }
+  return (
+    <Stack spacing={1}>
+      <TextField multiline minRows={onCancel ? 3 : 1} size="small" fullWidth placeholder={placeholder} value={body} autoFocus={!!onCancel}
+        onChange={e => setBody(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.metaKey || e.ctrlKey) && send()} />
+      {(onCancel || body) && (
+        <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
+          <Button size="small" onClick={() => (setBody(''), onCancel?.())}>Cancel</Button>
+          <Button size="small" variant="contained" onClick={send} disabled={!body.trim() || busy}>{busy ? 'Sending…' : label}</Button>
+        </Stack>
+      )}
+    </Stack>
+  )
+}
+
+function InlineThread({ mr, thread, onChanged, onError }) {
+  const [busy, setBusy] = useState(false)
+  const toggle = () => {
+    setBusy(true)
+    window.api.resolve(mr, thread.id, !thread.resolved).then(onChanged, e => onError(`Resolve failed: ${errText(e)}`)).finally(() => setBusy(false))
+  }
+  return (
+    <Thread thread={thread} inline>
+      <Stack spacing={1} sx={{ mt: 1 }}>
+        <Composer label="Reply" placeholder="Reply…" submit={body => window.api.reply(mr, thread.id, body)} onDone={onChanged} onError={onError} />
+        {thread.resolvable && (
+          <Box><Button size="small" onClick={toggle} disabled={busy}>{thread.resolved ? 'Unresolve conversation' : 'Resolve conversation'}</Button></Box>
+        )}
+      </Stack>
+    </Thread>
+  )
+}
+
+// GitHub-style colors; the alpha works on both light and dark backgrounds
+const ROW_BG = { add: 'rgba(46,160,67,0.15)', del: 'rgba(248,81,73,0.15)', hunk: 'rgba(56,139,253,0.1)' }
+const NUM_BG = { add: 'rgba(46,160,67,0.3)', del: 'rgba(248,81,73,0.3)' }
+const SIGN = { add: '+', del: '-', ctx: ' ' }
+const rowKey = r => r.type === 'del' ? `o${r.old}` : `n${r.new}`
+const threadKey = p => p.newLine ? `n${p.newLine}` : `o${p.oldLine}`
+const diffStat = f => ({ add: f.rows.filter(r => r.type === 'add').length, del: f.rows.filter(r => r.type === 'del').length })
+
+function DiffStat({ file }) {
+  const { add, del } = diffStat(file)
+  return (
+    <Typography variant="caption" sx={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+      <Box component="span" sx={{ color: 'success.main' }}>+{add}</Box> <Box component="span" sx={{ color: 'error.main' }}>−{del}</Box>
+    </Typography>
+  )
+}
+
+const numCell = type => ({ width: '1%', minWidth: 48, px: 1, textAlign: 'right', color: 'text.secondary', userSelect: 'none', bgcolor: NUM_BG[type] })
+
+function FileDiff({ id, mr, refs, file, threads, viewed, onViewed, onChanged, onError }) {
+  const [open, setOpen] = useState(!viewed)
+  const [draft, setDraft] = useState(null) // row key with an open "new comment" box
+  useEffect(() => setOpen(!viewed), [viewed]) // marking a file viewed folds it, like GitHub
+  // a thread made on an older push may point at lines that moved; show it above the diff as outdated
+  const current = threads.filter(t => t.position.headSha === refs.head_sha)
+  const outdated = threads.filter(t => t.position.headSha !== refs.head_sha)
+  const byRow = Object.groupBy(current, t => threadKey(t.position))
+  const thread = props => <InlineThread mr={mr} onChanged={onChanged} onError={onError} {...props} />
+  return (
+    <Paper variant="outlined" id={id} sx={{ mb: 2 }}>
+      <Stack direction="row" spacing={1} sx={{ position: 'sticky', top: 0, zIndex: 2, alignItems: 'center', px: 1, py: 0.5, bgcolor: 'background.paper', borderBottom: open ? 1 : 0, borderColor: 'divider' }}>
+        <IconButton size="small" onClick={() => setOpen(!open)}>{open ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}</IconButton>
+        <DiffStat file={file} />
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', wordBreak: 'break-all', flex: 1 }}>
+          {file.status === 'renamed' ? `${file.oldPath} → ${file.newPath}` : file.newPath}
+        </Typography>
+        {file.status !== 'modified' && <Chip size="small" variant="outlined" label={file.status} />}
+        {threads.length > 0 && <Chip size="small" label={`${threads.length} 💬`} />}
+        <FormControlLabel sx={{ mr: 0 }} label={<Typography variant="body2">Viewed</Typography>}
+          control={<Checkbox size="small" checked={viewed} onChange={e => onViewed(e.target.checked)} />} />
+      </Stack>
+      {open && (
+        <>
+          {outdated.length > 0 && <Stack spacing={1} sx={{ p: 1 }}>{outdated.map(t => (
+            <Box key={t.id}><Chip size="small" label={`Outdated · line ${t.position.newLine ?? t.position.oldLine}`} sx={{ mb: 0.5 }} />{thread({ thread: t })}</Box>
+          ))}</Stack>}
+          {file.tooLarge || !file.rows.length ? (
+            <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
+              {file.tooLarge ? 'This diff is too large to show.' : 'No text changes (binary, empty or mode change only).'}
+            </Typography>
+          ) : (
+            <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: 12, lineHeight: '20px', '& td': { p: 0, verticalAlign: 'top' } }}>
+              <tbody>
+                {file.rows.map((r, i) => r.type === 'hunk' ? (
+                  <Box component="tr" key={i} sx={{ bgcolor: ROW_BG.hunk, color: 'text.secondary' }}>
+                    <Box component="td" colSpan={3} sx={{ px: 1, py: 0.5 }}>{r.text}</Box>
+                  </Box>
+                ) : (
+                  <Fragment key={i}>
+                    <Box component="tr" sx={{ bgcolor: ROW_BG[r.type], '&:hover .add-comment': { visibility: 'visible' } }}>
+                      <Box component="td" sx={numCell(r.type)}>{r.old}</Box>
+                      <Box component="td" sx={numCell(r.type)}>{r.new}</Box>
+                      <Box component="td" sx={{ position: 'relative', pl: 3, pr: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                        <IconButton className="add-comment" title="Add a comment on this line" onClick={() => setDraft(rowKey(r))}
+                          sx={{ visibility: 'hidden', position: 'absolute', left: 0, top: 0, width: 20, height: 20, borderRadius: 1, fontSize: 14, color: 'common.white', bgcolor: 'primary.main', '&:hover': { bgcolor: 'primary.dark' } }}>+</IconButton>
+                        <Box component="span" sx={{ userSelect: 'none', mr: 1 }}>{SIGN[r.type]}</Box>{r.text}
+                      </Box>
+                    </Box>
+                    {(byRow[rowKey(r)] || draft === rowKey(r)) && (
+                      <tr>
+                        <Box component="td" colSpan={3} sx={{ typography: 'body2', p: '8px !important', borderTop: 1, borderBottom: 1, borderColor: 'divider' }}>
+                          <Stack spacing={1} sx={{ maxWidth: 900 }}>
+                            {byRow[rowKey(r)]?.map(t => <Fragment key={t.id}>{thread({ thread: t })}</Fragment>)}
+                            {draft === rowKey(r) && (
+                              <Paper variant="outlined" sx={{ p: 1.5 }}>
+                                <Composer label="Add comment" onCancel={() => setDraft(null)} onError={onError}
+                                  submit={body => window.api.comment(mr, { refs, oldPath: file.oldPath, newPath: file.newPath, oldLine: r.old, newLine: r.new, body })}
+                                  onDone={() => { setDraft(null); onChanged() }} />
+                              </Paper>
+                            )}
+                          </Stack>
+                        </Box>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </Box>
+          )}
+        </>
+      )}
+    </Paper>
+  )
+}
+
+// "Viewed" marks live in this browser only, keyed by MR. A file's mark holds its diff hash, so a new change to the file clears it.
+// ponytail: entries for merged MRs are never cleaned up; they are tiny.
+function useViewed(mrId) {
+  const key = `viewed:${mrId}`
+  const [viewed, setViewed] = useState(() => { try { return JSON.parse(localStorage.getItem(key)) ?? {} } catch { return {} } })
+  const set = (path, hash) => setViewed(old => {
+    const next = { ...old, [path]: hash }
+    if (!hash) delete next[path]
+    try { localStorage.setItem(key, JSON.stringify(next)) } catch {}
+    return next
+  })
+  return [viewed, set]
+}
+
+function Changes({ mr, details, onChanged, onError }) {
+  const [data, setData] = useState(null)
+  const [filter, setFilter] = useState('')
+  const [viewed, setViewed] = useViewed(mr.id)
+  useEffect(() => {
+    let current = true
+    window.api.changes(mr).then(d => current && setData(d), e => current && setData({ error: errText(e) }))
+    return () => { current = false }
+  }, [mr.id, mr.updatedAt])
+  if (!data) return <LinearProgress />
+  if (data.error) return <Alert severity="error">{data.error}</Alert>
+
+  const threadsFor = f => details?.threads?.filter(t => t.position?.path === f.newPath) ?? []
+  const isViewed = f => viewed[f.newPath] === f.hash
+  const total = data.files.reduce((s, f) => { const d = diffStat(f); return { add: s.add + d.add, del: s.del + d.del } }, { add: 0, del: 0 })
+  const shown = data.files.map((f, i) => ({ f, i })).filter(({ f }) => f.newPath.toLowerCase().includes(filter.toLowerCase()))
+  return (
+    <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
+      <Box sx={{ width: 300, flexShrink: 0, borderRight: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ p: 1 }}>
+          <TextField size="small" fullWidth placeholder="Filter changed files" value={filter} onChange={e => setFilter(e.target.value)} />
+          <Typography variant="caption" color="text.secondary">
+            {data.files.filter(isViewed).length} / {data.files.length} files viewed
+          </Typography>
+        </Box>
+        <List dense sx={{ overflow: 'auto', flex: 1 }}>
+          {shown.map(({ f, i }) => {
+            const slash = f.newPath.lastIndexOf('/')
+            return (
+              <ListItemButton key={f.newPath} onClick={() => document.getElementById(`file-${i}`)?.scrollIntoView()} sx={{ opacity: isViewed(f) ? 0.5 : 1 }}>
+                <ListItemText primary={f.newPath.slice(slash + 1)} secondary={f.newPath.slice(0, slash + 1) || null}
+                  slotProps={{ primary: { sx: { fontFamily: 'monospace', fontSize: 13, wordBreak: 'break-all' } }, secondary: { sx: { wordBreak: 'break-all' } } }} />
+                {isViewed(f) && <CheckIcon fontSize="small" color="success" />}
+              </ListItemButton>
+            )
+          })}
+        </List>
+      </Box>
+      <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+        <Typography variant="body2" sx={{ mb: 2 }}>
+          {data.files.length} files changed, <Box component="span" sx={{ color: 'success.main' }}>+{total.add}</Box> <Box component="span" sx={{ color: 'error.main' }}>−{total.del}</Box>
+        </Typography>
+        {shown.map(({ f, i }) => (
+          <FileDiff key={f.newPath} id={`file-${i}`} mr={mr} refs={data.refs} file={f} threads={threadsFor(f)}
+            viewed={isViewed(f)} onViewed={on => setViewed(f.newPath, on && f.hash)} onChanged={onChanged} onError={onError} />
+        ))}
+      </Box>
+    </Box>
+  )
+}
+
+function FullView({ mr, details, review, onError, onChanged }) {
+  const [tab, setTab] = useState('overview')
+  return (
+    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', px: 2, borderBottom: 1, borderColor: 'divider' }}>
+        <Tabs value={tab} onChange={(_e, v) => setTab(v)} sx={{ flex: 1 }}>
+          <Tab value="overview" label="Overview" />
+          <Tab value="files" label="Files changed" />
+        </Tabs>
+        <ApproveButton mr={mr} onError={onError} />
+      </Stack>
+      {tab === 'files' ? <Changes mr={mr} details={details} onChanged={onChanged} onError={onError} /> : <Overview mr={mr} details={details} review={review} onError={onError} />}
+    </Box>
+  )
+}
+
+function Overview({ mr, details, review, onError }) {
   return (
     <Box sx={{ flex: 1, overflow: 'auto' }}>
       <Container maxWidth="md" sx={{ py: 3 }}>
@@ -230,7 +452,6 @@ function FullView({ mr, details, review, onError }) {
               <Box sx={{ flex: 1 }} />
               {review?.busy && <CircularProgress size={18} titleAccess="AI review running" />}
               <ReviewButtons mr={mr} review={review} onError={onError} />
-              <ApproveButton mr={mr} onError={onError} />
             </Stack>
           </Box>
           <ReviewChat mr={mr} review={review} />
@@ -327,6 +548,7 @@ function App() {
   const [full, setFull] = useState(false)
   const [details, setDetails] = useState(null)
   const [reviews, setReviews] = useState({})
+  const [detailsTick, setDetailsTick] = useState(0) // bump to reload threads after you comment
 
   const refresh = () => { setLoading(true); window.api.refresh().then(setState).finally(() => setLoading(false)) }
   const select = id => { setDetails(null); setFull(false); setSelectedId(id) }
@@ -344,7 +566,7 @@ function App() {
     let current = true
     window.api.details(mr).then(d => current && setDetails(d), e => current && setDetails({ error: e.message.split('Error: ').pop() }))
     return () => { current = false }
-  }, [mr?.id, state.fetchedAt])
+  }, [mr?.id, state.fetchedAt, detailsTick])
 
   const alertCount = key => board?.[key].filter(c => ALERT.has(c.status)).length ?? 0
   const showFull = full && mr
@@ -378,7 +600,7 @@ function App() {
       {state.error && <Alert severity="error">{state.error}</Alert>}
       {actionError && <Alert severity="error" onClose={() => setActionError(null)}>{actionError}</Alert>}
       {showFull
-        ? <FullView mr={mr} details={details} review={reviews[mr.id]} onError={setActionError} />
+        ? <FullView key={mr.id} mr={mr} details={details} review={reviews[mr.id]} onError={setActionError} onChanged={() => setDetailsTick(t => t + 1)} />
         : board && <Board columns={BOARDS[tab].columns} cards={board[tab]} onSelect={select} reviews={reviews} />}
       <Sidebar mr={showFull ? null : mr} details={details} review={mr && reviews[mr.id]} onClose={close} onFull={() => setFull(true)} onError={setActionError} />
       <Settings open={settingsOpen || !!state.needsConfig} onClose={() => setSettingsOpen(false)} />
