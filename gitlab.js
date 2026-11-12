@@ -203,7 +203,7 @@ export async function fetchBoard(config) {
     })),
   ])
   const mergedCards = merged
-    .map(mr => ({ ...card(mr, 'Merged'), mergedAt: mr.merged_at }))
+    .map(mr => ({ ...card(mr, 'Merged'), mergedAt: mr.merged_at, targetBranch: mr.target_branch, labels: mr.labels, comments: mr.user_notes_count }))
     .sort((a, b) => Date.parse(b.mergedAt) - Date.parse(a.mergedAt))
   return { me: { username: me.username }, mine: mineCards, reviewing: reviewingCards, merged: mergedCards }
 }

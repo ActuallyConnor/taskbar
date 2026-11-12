@@ -151,7 +151,7 @@ function MrCard({ mr, onSelect, review }) {
             )}
         </Stack>
         <Typography variant="body2" sx={{ my: 0.5 }}>{mr.title}</Typography>
-        <Person user={mr.author}>{mr.author.name} · {mr.mergedAt ? `merged ${when(mr.mergedAt)}` : when(mr.updatedAt)}</Person>
+        <Person user={mr.author}>{mr.author.name} · {when(mr.updatedAt)}</Person>
       </CardActionArea>
     </Card>
   )
@@ -175,7 +175,7 @@ function Board({ columns, cards, onSelect, reviews, onError }) {
         const items = cards.filter(c => column(c, reviews[c.id]) === col)
         return (
           <Paper key={col} sx={{ width: 300, flexShrink: 0, p: 1.5, bgcolor: COLOURED.has(col) ? 'warning.main' : undefined, outline: over === col ? 2 : 0, outlineColor: 'primary.main' }}
-            {...(col !== 'AI reviewed' && col !== 'Merged' && { onDragOver: e => (e.preventDefault(), setOver(col)), onDragLeave: () => setOver(null), onDrop: e => drop(e, col) })}>
+            {...(col !== 'AI reviewed' && { onDragOver: e => (e.preventDefault(), setOver(col)), onDragLeave: () => setOver(null), onDrop: e => drop(e, col) })}>
             <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 1.5 }}>
               <Typography variant="subtitle2">{col}</Typography>
               <Chip size="small" label={items.length} />
@@ -184,6 +184,37 @@ function Board({ columns, cards, onSelect, reviews, onError }) {
           </Paper>
         )
       })}
+    </Box>
+  )
+}
+
+// Merged tab: one centred list, like GitLab's merge request list
+function MergedList({ cards, onSelect }) {
+  return (
+    <Box sx={{ flex: 1, overflowY: 'auto' }}>
+      <Container maxWidth="md" sx={{ py: 3 }}>
+        <Typography variant="h6" gutterBottom>Merged ({cards.length})</Typography>
+        <Paper variant="outlined">
+          {!cards.length && <Typography color="text.secondary" sx={{ p: 2 }}>No merged MRs.</Typography>}
+          <List disablePadding>
+            {cards.map((mr, i) => (
+              <ListItemButton key={mr.id} divider={i < cards.length - 1} onClick={() => onSelect(mr.id)} sx={{ py: 1.5 }}>
+                <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography sx={{ fontWeight: 500 }}>{mr.title}</Typography>
+                  <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Typography variant="caption" color="text.secondary">{mr.ref} · merged {when(mr.mergedAt)} · into {mr.targetBranch}</Typography>
+                    {mr.labels.map(l => <Chip key={l} size="small" label={l} />)}
+                  </Stack>
+                </Stack>
+                <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexShrink: 0, ml: 2 }}>
+                  <Typography variant="caption" color="text.secondary" title="Comments">💬 {mr.comments}</Typography>
+                  <Avatar src={mr.author.avatar} alt={mr.author.name} title={mr.author.name} sx={{ width: 24, height: 24 }} />
+                </Stack>
+              </ListItemButton>
+            ))}
+          </List>
+        </Paper>
+      </Container>
     </Box>
   )
 }
@@ -709,6 +740,7 @@ function App() {
       {actionError && <Alert severity="error" onClose={() => setActionError(null)}>{actionError}</Alert>}
       {showFull
         ? <FullView key={mr.id} mr={mr} details={details} review={reviews[mr.id]} onError={setActionError} onChanged={() => setDetailsTick(t => t + 1)} />
+        : board && tab === 'merged' ? <MergedList cards={board.merged ?? []} onSelect={select} />
         : board && <Board columns={BOARDS[tab].columns} cards={board[tab]} onSelect={select} reviews={reviews} onError={setActionError} />}
       <Sidebar mr={showFull ? null : mr} details={details} review={mr && reviews[mr.id]} onClose={close} onFull={() => setFull(true)} onError={setActionError} />
       <Settings open={settingsOpen || !!state.needsConfig} onClose={() => setSettingsOpen(false)} />
