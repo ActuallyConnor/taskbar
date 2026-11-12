@@ -225,6 +225,18 @@ function Sidebar({ mr, details, review, onClose, onFull, onError }) {
   )
 }
 
+// threads (by their first comment) and commit pushes, oldest first
+const timeline = d => [...d.threads, ...(d.pushes ?? [])].sort((a, b) => Date.parse(a.createdAt ?? a.notes[0].createdAt) - Date.parse(b.createdAt ?? b.notes[0].createdAt))
+
+function Push({ push }) {
+  return (
+    <Box sx={{ pl: 1.5, borderLeft: 3, borderColor: 'divider' }}>
+      <Person user={push.author}>{push.author.name} {push.summary} · {when(push.createdAt)}</Person>
+      {push.commits.map((c, i) => <Typography key={i} variant="body2" sx={{ fontFamily: 'monospace' }}>{c}</Typography>)}
+    </Box>
+  )
+}
+
 function Thread({ thread, inline, children }) {
   return (
     <Paper variant="outlined" sx={{ p: 1.5 }}>
@@ -539,7 +551,9 @@ function Overview({ mr, details, review, onChanged, onError }) {
             <Typography variant="h6" gutterBottom>Comments</Typography>
             {details?.threads ? (
               <Stack spacing={2}>
-                {details.threads.length ? details.threads.map(t => <InlineThread key={t.id} mr={mr} thread={t} inline={false} onChanged={onChanged} onError={onError} />) : <Typography color="text.secondary">No comments.</Typography>}
+                {timeline(details).length ? timeline(details).map(e => e.commits
+                  ? <Push key={e.id} push={e} />
+                  : <InlineThread key={e.id} mr={mr} thread={e} inline={false} onChanged={onChanged} onError={onError} />) : <Typography color="text.secondary">No comments.</Typography>}
                 <Composer submit={body => window.api.note(mr, body)} onDone={onChanged} onError={onError} />
               </Stack>
             ) : <Activity details={details} />}

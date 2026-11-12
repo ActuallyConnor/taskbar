@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { applyMoves, reviewStatus, myStatus, parseDiff, lineCode, findLine } from './gitlab.js'
+import { applyMoves, reviewStatus, myStatus, parseDiff, lineCode, findLine, push } from './gitlab.js'
 
 const me = { id: 1, username: 'me' }
 const author = { id: 2 }
@@ -68,4 +68,11 @@ test('findLine maps an AI comment to its diff row', () => {
   assert.deepEqual(findLine(files, { path: 'x.js', line: 3 }).row, { type: 'ctx', old: 3, new: 3, text: 'c' })
   assert.equal(findLine(files, { path: 'x.js', line: 9 }), null) // not in the diff
   assert.equal(findLine(files, { path: 'y.js', line: 1 }), null)
+})
+
+test('push reads the commit lines from a GitLab system note', () => {
+  const p = push({ id: 7, author: { id: 2, name: 'A', avatar_url: '' }, created_at: '2026-11-12T10:00:00Z',
+    body: 'added 2 commits\n\n<ul><li>abc1234 - Fix &amp; test</li><li>def5678 - Use &lt;b&gt;</li></ul>\n\n[Compare with previous version](/x)' })
+  assert.equal(p.summary, 'added 2 commits')
+  assert.deepEqual(p.commits, ['abc1234 - Fix & test', 'def5678 - Use <b>'])
 })

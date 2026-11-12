@@ -73,7 +73,16 @@ export const approve = (config, projectId, iid) => client(config)(`/projects/${p
 
 const where = p => p && `${p.new_path ?? p.old_path}:${p.new_line ?? p.old_line ?? ''}`
 
-// Comment threads (system notes dropped) and who has approved, for the sidebar and full view.
+const PUSH = /^added \d+ (new )?commits?/
+const unhtml = s => s.replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+// "added 2 commits\n\n<ul><li>abc123 - Fix it</li>…</ul>" → one timeline event with the commit lines
+export const push = n => ({
+  id: n.id, author: user(n.author), createdAt: n.created_at,
+  summary: n.body.split('\n')[0],
+  commits: [...n.body.matchAll(/<li>([\s\S]*?)<\/li>/g)].map(m => unhtml(m[1]).trim()),
+})
+
+// Comment threads (system notes dropped), commit pushes and who has approved, for the sidebar and full view.
 export async function details(config, projectId, iid) {
   const api = client(config)
   const p = `/projects/${projectId}/merge_requests/${iid}`
@@ -92,7 +101,8 @@ export async function details(config, projectId, iid) {
       notes: d.notes.filter(n => !n.system).map(n => ({ id: n.id, author: user(n.author), body: n.body, createdAt: n.created_at })),
     }))
     .filter(t => t.notes.length)
-  return { approvedBy: approvals.approved_by.map(a => a.user.id), threads }
+  const pushes = discussions.flatMap(d => d.notes).filter(n => n.system && PUSH.test(n.body)).map(push)
+  return { approvedBy: approvals.approved_by.map(a => a.user.id), threads, pushes }
 }
 
 // Unified diff text → rows. Each row has old and/or new line number, like GitHub's two number columns.
