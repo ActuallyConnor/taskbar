@@ -63,12 +63,26 @@ function ApproveButton({ mr, onError }) {
 }
 
 function ReviewButtons({ mr, review, onError, onStarted }) {
+  const [confirm, setConfirm] = useState(null) // provider waiting for "override the current review?"
   const start = provider => window.api.startReview(mr, provider).then(onStarted, e => onError(`AI review failed: ${e.message.split('Error: ').pop()}`))
+  const click = provider => review?.messages.length ? setConfirm(provider) : start(provider)
   return (
-    <ButtonGroup size="small" disabled={!!review?.busy}>
-      <Button onClick={() => start('claude')}>AI review: Claude</Button>
-      <Button onClick={() => start('codex')}>Codex</Button>
-    </ButtonGroup>
+    <>
+      <ButtonGroup size="small" disabled={!!review?.busy}>
+        <Button onClick={() => click('claude')}>AI review: Claude</Button>
+        <Button onClick={() => click('codex')}>Codex</Button>
+      </ButtonGroup>
+      <Dialog open={!!confirm} onClose={() => setConfirm(null)}>
+        <DialogTitle>Override the current review?</DialogTitle>
+        <DialogContent>
+          <Typography>This MR already has an AI review ({review?.provider}). A new review replaces it and its chat.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirm(null)}>Cancel</Button>
+          <Button variant="contained" onClick={() => { start(confirm); setConfirm(null) }}>Confirm</Button>
+        </DialogActions>
+      </Dialog>
+    </>
   )
 }
 
