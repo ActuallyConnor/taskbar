@@ -181,10 +181,12 @@ export async function fetchBoard(config) {
   const api = client(config)
   const me = await api('/user')
   const q = 'state=opened&scope=all&per_page=100'
-  const [mine, reviewer, assignee] = await Promise.all([
+  // ponytail: your last 100 merged MRs only
+  const [mine, reviewer, assignee, merged] = await Promise.all([
     api(`/merge_requests?${q}&author_id=${me.id}`),
     api(`/merge_requests?${q}&reviewer_id=${me.id}`),
     api(`/merge_requests?${q}&assignee_id=${me.id}`),
+    api(`/merge_requests?state=merged&scope=all&author_id=${me.id}&per_page=100&order_by=updated_at`),
   ])
   const others = [...new Map([...reviewer, ...assignee].filter(mr => mr.author.id !== me.id).map(mr => [mr.id, mr])).values()]
 
@@ -200,5 +202,8 @@ export async function fetchBoard(config) {
       return { ...card(mr, reviewStatus(mr, notes, me, ids.length > 0)), approvedByMe: ids.includes(me.id) }
     })),
   ])
-  return { me: { username: me.username }, mine: mineCards, reviewing: reviewingCards }
+  const mergedCards = merged
+    .map(mr => ({ ...card(mr, 'Merged'), mergedAt: mr.merged_at }))
+    .sort((a, b) => Date.parse(b.mergedAt) - Date.parse(a.mergedAt))
+  return { me: { username: me.username }, mine: mineCards, reviewing: reviewingCards, merged: mergedCards }
 }

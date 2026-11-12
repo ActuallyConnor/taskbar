@@ -19,6 +19,7 @@ const theme = createTheme({ colorSchemes: { dark: true } })
 const BOARDS = {
   reviewing: { label: 'Reviewing', columns: ['To review', 'AI reviewed', 'Needs re-review', 'Waiting on author', 'Approved'] },
   mine: { label: 'My MRs', columns: ['Draft', 'In review', 'Has feedback', 'Ready to merge'] },
+  merged: { label: 'Merged', columns: ['Merged'] },
 }
 const ALERT = new Set(['Needs re-review', 'Has feedback'])
 // columns drawn in orange; Needs re-review still counts in the badge, it just is not coloured
@@ -150,7 +151,7 @@ function MrCard({ mr, onSelect, review }) {
             )}
         </Stack>
         <Typography variant="body2" sx={{ my: 0.5 }}>{mr.title}</Typography>
-        <Person user={mr.author}>{mr.author.name} · {when(mr.updatedAt)}</Person>
+        <Person user={mr.author}>{mr.author.name} · {mr.mergedAt ? `merged ${when(mr.mergedAt)}` : when(mr.updatedAt)}</Person>
       </CardActionArea>
     </Card>
   )
@@ -174,7 +175,7 @@ function Board({ columns, cards, onSelect, reviews, onError }) {
         const items = cards.filter(c => column(c, reviews[c.id]) === col)
         return (
           <Paper key={col} sx={{ width: 300, flexShrink: 0, p: 1.5, bgcolor: COLOURED.has(col) ? 'warning.main' : undefined, outline: over === col ? 2 : 0, outlineColor: 'primary.main' }}
-            {...(col !== 'AI reviewed' && { onDragOver: e => (e.preventDefault(), setOver(col)), onDragLeave: () => setOver(null), onDrop: e => drop(e, col) })}>
+            {...(col !== 'AI reviewed' && col !== 'Merged' && { onDragOver: e => (e.preventDefault(), setOver(col)), onDragLeave: () => setOver(null), onDrop: e => drop(e, col) })}>
             <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 1.5 }}>
               <Typography variant="subtitle2">{col}</Typography>
               <Chip size="small" label={items.length} />
@@ -218,7 +219,7 @@ function Sidebar({ mr, details, review, onClose, onFull, onError }) {
             <Button size="small" onClick={() => window.open(mr.url)}>Open in browser</Button>
             <ApproveButton mr={mr} onError={onError} />
           </Stack>
-          <ReviewButtons mr={mr} review={review} onError={onError} onStarted={onFull} />
+          {!mr.mergedAt && <ReviewButtons mr={mr} review={review} onError={onError} onStarted={onFull} />}
         </Stack>
       )}
     </Drawer>
@@ -536,7 +537,7 @@ function Overview({ mr, details, review, onChanged, onError }) {
               <Person user={mr.author} />
               <Box sx={{ flex: 1 }} />
               {review?.busy && <CircularProgress size={18} titleAccess="AI review running" />}
-              <ReviewButtons mr={mr} review={review} onError={onError} />
+              {!mr.mergedAt && <ReviewButtons mr={mr} review={review} onError={onError} />}
             </Stack>
           </Box>
           <ReviewChat mr={mr} review={review} />
@@ -665,7 +666,7 @@ function App() {
 
   const board = state.board
   // look the card up on every render so it follows the board (status changes, merged MRs disappear)
-  const mr = board && [...board.reviewing, ...board.mine].find(c => c.id === selectedId)
+  const mr = board && [...board.reviewing, ...board.mine, ...(board.merged ?? [])].find(c => c.id === selectedId)
 
   // reload threads and approvals when a card opens and after each board refresh
   useEffect(() => {
