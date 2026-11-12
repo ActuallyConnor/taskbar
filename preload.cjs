@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   approveMr: mr => ipcRenderer.invoke('mr:approve', mrId(mr)),
   getReviews: () => ipcRenderer.invoke('review:get'),
   startReview: (mr, provider) => ipcRenderer.invoke('review:start', mrId(mr), provider),
+  cancelReview: mr => ipcRenderer.invoke('review:cancel', mrId(mr)),
   askReview: (mr, question) => ipcRenderer.invoke('review:ask', mrId(mr), question),
   onReviews: fn => ipcRenderer.on('reviews', (_e, r) => fn(r)),
   onState: fn => ipcRenderer.on('state', (_e, s) => fn(s)),

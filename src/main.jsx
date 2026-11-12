@@ -100,6 +100,7 @@ function ReviewChat({ mr, review }) {
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <Typography variant="h6">AI review ({review.provider})</Typography>
           {review.busy && <CircularProgress size={18} />}
+          {review.busy && <Button size="small" onClick={() => window.api.cancelReview(mr)}>Cancel</Button>}
         </Stack>
         {review.messages.map((m, i) => m.role === 'user'
           ? <Box key={i} sx={{ p: 1, borderRadius: 1, bgcolor: 'action.hover', alignSelf: 'flex-end' }}><Typography variant="body2">{m.text}</Typography></Box>

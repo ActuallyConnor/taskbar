@@ -47,14 +47,15 @@ export function parse(provider, out) {
 }
 
 // Runs one turn. The prompt goes on stdin. Pass the session from the last turn to continue the chat.
-export function ask(provider, prompt, session) {
+// Pass an AbortSignal to kill the CLI part way through.
+export function ask(provider, prompt, session, signal) {
   const [cmd, args] = CLI[provider](session)
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd: os.tmpdir() })
+    const p = spawn(cmd, args, { cwd: os.tmpdir(), signal })
     let out = '', err = ''
     p.stdout.on('data', d => (out += d))
     p.stderr.on('data', d => (err += d))
-    p.on('error', e => reject(new Error(`Cannot start ${cmd}: ${e.message}`)))
+    p.on('error', e => reject(e.name === 'AbortError' ? e : new Error(`Cannot start ${cmd}: ${e.message}`)))
     p.on('close', code => {
       try {
         const r = parse(provider, out)

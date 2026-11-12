@@ -189,15 +189,24 @@ const cardFor = mr => {
   return c
 }
 
+const running = new Map() // card id → AbortController of the review turn in flight (kept out of reviews: it cannot go over IPC)
+
 function turn(card, prompt) {
   const r = reviews.get(card.id)
+  const ctl = new AbortController()
+  running.set(card.id, ctl)
   r.busy = true
   r.error = null
   sendReviews()
-  ask(r.provider, prompt, r.session)
+  ask(r.provider, prompt, r.session, ctl.signal)
     .then(({ session, text }) => { r.session = session; r.messages.push({ role: 'assistant', text }) })
-    .catch(e => { r.error = e.message })
-    .finally(() => { r.busy = false; sendReviews(); push(card, r.error ? 'AI review failed' : 'AI review finished') })
+    .catch(e => { r.error = ctl.signal.aborted ? 'Cancelled.' : e.message })
+    .finally(() => {
+      running.delete(card.id)
+      r.busy = false
+      sendReviews()
+      if (!ctl.signal.aborted) push(card, r.error ? 'AI review failed' : 'AI review finished')
+    })
 }
 
 ipcMain.handle('notifications:get', () => notifications)
@@ -214,6 +223,7 @@ ipcMain.handle('review:start', (_e, mr, provider) => {
   reviews.set(c.id, { provider, messages: [], busy: false })
   turn(c, reviewPrompt(c.url))
 })
+ipcMain.handle('review:cancel', (_e, mr) => running.get(cardFor(mr).id)?.abort())
 ipcMain.handle('review:ask', (_e, mr, question) => {
   const c = cardFor(mr)
   const r = reviews.get(c.id)
