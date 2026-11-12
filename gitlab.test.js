@@ -24,6 +24,8 @@ test('reviewStatus', () => {
   assert.equal(reviewStatus(mr, [note(author, 'requested review from @meow', true), approval], me, true), 'Approved')
   // re-request before my approval is old news
   assert.equal(reviewStatus(mr, [approval, note(author, 'requested review from @me', true)], me, true), 'Approved')
+  // approved by someone else, I never commented → Approved
+  assert.equal(reviewStatus(mr, [note({ id: 3 }, 'approved this merge request', true)], me, true), 'Approved')
   // approval reset by push → no longer approved → new commits mean re-review
   assert.equal(reviewStatus(mr, [note(author, 'added 1 commit', true), approval], me, false), 'Needs re-review')
 })

@@ -8,7 +8,7 @@ const isMine = me => n => n.author.id === me.id
 const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const reRequested = me => n => n.system && new RegExp(`requested review from .*@${escape(me.username)}(?![\\w.-])`).test(n.body)
 
-// approved = your approval is currently active (from the approvals API, so a reset on push counts as not approved)
+// approved = someone (you or another reviewer) has an active approval (from the approvals API, so a reset on push counts as not approved)
 export function reviewStatus(mr, notes, me, approved = false) {
   const i = notes.findIndex(isMine(me))
   if (i === -1 && !approved) return 'To review'
@@ -173,13 +173,13 @@ export async function fetchBoard(config) {
   // ponytail: 1–2 requests per MR, all in parallel. Fine for tens of MRs; batch or use GraphQL if it hits rate limits.
   const mrPath = mr => `/projects/${mr.project_id}/merge_requests/${mr.iid}`
   const notesOf = mr => api(`${mrPath(mr)}/notes?${NOTES}`)
-  const approvedByMe = async mr => (await api(`${mrPath(mr)}/approvals`)).approved_by.some(a => a.user.id === me.id)
+  const approved = async mr => (await api(`${mrPath(mr)}/approvals`)).approved_by.length > 0
 
   const [mineCards, reviewingCards] = await Promise.all([
     Promise.all(mine.map(async mr => card(mr, myStatus(mr, await notesOf(mr), me)))),
     Promise.all(others.map(async mr => {
-      const [notes, approved] = await Promise.all([notesOf(mr), approvedByMe(mr)])
-      return card(mr, reviewStatus(mr, notes, me, approved))
+      const [notes, isApproved] = await Promise.all([notesOf(mr), approved(mr)])
+      return card(mr, reviewStatus(mr, notes, me, isApproved))
     })),
   ])
   return { me: { username: me.username }, mine: mineCards, reviewing: reviewingCards }
