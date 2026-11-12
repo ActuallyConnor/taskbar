@@ -29,7 +29,9 @@ Include only findings on a line that is in the MR diff. Reply with only a JSON a
 
 // The JSON array from the post reply. Throws when the AI did not give one.
 export function parseComments(text) {
-  const json = text.match(/```(?:json)?\s*([\s\S]*?)```/)?.[1] ?? text
+  // first [ to last ]: a comment body can hold its own ``` code block, so do not cut at the first fence
+  const from = text.indexOf('[', Math.max(0, text.indexOf('```json')))
+  const json = text.slice(from, text.lastIndexOf(']') + 1)
   let list
   try { list = JSON.parse(json) } catch { throw new Error('The AI did not reply with a list of comments. Try again.') }
   if (!Array.isArray(list)) throw new Error('The AI did not reply with a list of comments. Try again.')
