@@ -15,6 +15,8 @@ For each finding, use this structure:
 
 Rules:
 - Ignore stylistic nitpicks, variable naming preferences, or formatting unless they directly impair readability or correctness.
+- Before you review, read every existing discussion on the merge request (\`glab api --paginate projects/:id/merge_requests/:iid/discussions\`), including resolved threads and comments from bots such as Axiom.
+- Do not report a finding that a person or bot already raised in a discussion, even if they used different words. If you have something new to add to an existing point, say which thread it belongs to.
 - If no critical or major issues are found, explicitly state that the code is clean and safe to merge.
 - Conclude with a 3-bullet summary: What changed, core risk level, and main recommendation.
 ${url}
