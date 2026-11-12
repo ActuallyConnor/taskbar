@@ -49,8 +49,8 @@ function Person({ user, size = 20, children }) {
 
 function ApproveButton({ mr, onError }) {
   const [approving, setApproving] = useState(false)
-  // ponytail: any Reviewing status you have not approved yet; "My MRs" statuses are excluded (you cannot approve your own MR)
-  if (!['To review', 'Needs re-review', 'Waiting on author'].includes(mr.status)) return null
+  // approvedByMe is only set on Reviewing cards; "My MRs" cards leave it undefined (you cannot approve your own MR)
+  if (mr.approvedByMe !== false) return null
   const approve = () => {
     setApproving(true)
     window.api.approveMr(mr).catch(e => onError(`Approve failed: ${e.message.split('Error: ').pop()}`)).finally(() => setApproving(false))

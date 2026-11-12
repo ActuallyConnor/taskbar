@@ -173,13 +173,13 @@ export async function fetchBoard(config) {
   // ponytail: 1–2 requests per MR, all in parallel. Fine for tens of MRs; batch or use GraphQL if it hits rate limits.
   const mrPath = mr => `/projects/${mr.project_id}/merge_requests/${mr.iid}`
   const notesOf = mr => api(`${mrPath(mr)}/notes?${NOTES}`)
-  const approved = async mr => (await api(`${mrPath(mr)}/approvals`)).approved_by.length > 0
+  const approvers = async mr => (await api(`${mrPath(mr)}/approvals`)).approved_by.map(a => a.user.id)
 
   const [mineCards, reviewingCards] = await Promise.all([
     Promise.all(mine.map(async mr => card(mr, myStatus(mr, await notesOf(mr), me)))),
     Promise.all(others.map(async mr => {
-      const [notes, isApproved] = await Promise.all([notesOf(mr), approved(mr)])
-      return card(mr, reviewStatus(mr, notes, me, isApproved))
+      const [notes, ids] = await Promise.all([notesOf(mr), approvers(mr)])
+      return { ...card(mr, reviewStatus(mr, notes, me, ids.length > 0)), approvedByMe: ids.includes(me.id) }
     })),
   ])
   return { me: { username: me.username }, mine: mineCards, reviewing: reviewingCards }
