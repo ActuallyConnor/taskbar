@@ -22,6 +22,20 @@ Rules:
 ${url}
 Use the gl api (the \`glab api\` command) to read the merge request and its diff. Only read; do not change anything in GitLab.`
 
+export const postPrompt = `Turn your findings into inline comments for the merge request. Do not post anything yourself; the app posts them.
+Include only findings on a line that is in the MR diff. Reply with only a JSON array in a \`\`\`json code block, no other text:
+[{"path": "file path in the new version", "line": 42, "side": "new", "body": "the comment, in markdown"}]
+"side" is "new" for an added or unchanged line (line number in the new file), or "old" for a removed line (line number in the old file).`
+
+// The JSON array from the post reply. Throws when the AI did not give one.
+export function parseComments(text) {
+  const json = text.match(/```(?:json)?\s*([\s\S]*?)```/)?.[1] ?? text
+  let list
+  try { list = JSON.parse(json) } catch { throw new Error('The AI did not reply with a list of comments. Try again.') }
+  if (!Array.isArray(list)) throw new Error('The AI did not reply with a list of comments. Try again.')
+  return list.filter(c => typeof c?.path === 'string' && Number.isInteger(c.line) && typeof c.body === 'string' && c.body.trim())
+}
+
 // ponytail: Claude can only run `glab api`; Codex gets a sandbox with network so glab works. Both can still be steered by MR text (prompt injection).
 const CODEX_OPTS = ['--json', '--skip-git-repo-check', '-c', 'sandbox_mode="workspace-write"', '-c', 'sandbox_workspace_write.network_access=true']
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { applyMoves, reviewStatus, myStatus, parseDiff, lineCode } from './gitlab.js'
+import { applyMoves, reviewStatus, myStatus, parseDiff, lineCode, findLine } from './gitlab.js'
 
 const me = { id: 1, username: 'me' }
 const author = { id: 2 }
@@ -58,4 +58,14 @@ test('a moved card keeps its column until the MR has new activity', () => {
   assert.deepEqual(applyMoves(cards, moves), [2])
   assert.equal(cards[0].status, 'Waiting on author')
   assert.equal(cards[1].status, 'Needs re-review')
+})
+
+test('findLine maps an AI comment to its diff row', () => {
+  const rows = parseDiff('@@ -1,3 +1,3 @@\n a\n-b\n+B\n c')
+  const files = [{ oldPath: 'x.js', newPath: 'x.js', rows }]
+  assert.equal(findLine(files, { path: 'x.js', line: 2, side: 'new' }).row.type, 'add')
+  assert.equal(findLine(files, { path: 'x.js', line: 2, side: 'old' }).row.type, 'del')
+  assert.deepEqual(findLine(files, { path: 'x.js', line: 3 }).row, { type: 'ctx', old: 3, new: 3, text: 'c' })
+  assert.equal(findLine(files, { path: 'x.js', line: 9 }), null) // not in the diff
+  assert.equal(findLine(files, { path: 'y.js', line: 1 }), null)
 })

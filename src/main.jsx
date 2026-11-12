@@ -108,10 +108,12 @@ function ReviewChat({ mr, review }) {
         {review.busy && <Typography variant="body2" color="text.secondary">{review.messages.length ? 'Thinking…' : 'Reviewing… this can take a few minutes.'}</Typography>}
         {review.error && <Alert severity="error">{review.error}</Alert>}
         {review.session && (
-          <form onSubmit={send}>
+          <Stack direction="row" spacing={1} component="form" onSubmit={send}>
             <TextField fullWidth size="small" placeholder="Ask about the review" value={question}
               onChange={e => setQuestion(e.target.value)} disabled={review.busy} />
-          </form>
+            <Button variant="contained" sx={{ flexShrink: 0 }} disabled={review.busy} onClick={() => window.api.postReview(mr)}
+              title="Post the findings as inline comments on the changed lines">Post review</Button>
+          </Stack>
         )}
       </Stack>
     </Paper>

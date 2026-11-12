@@ -133,6 +133,14 @@ export async function changes(config, projectId, iid) {
   }
 }
 
+// The file and diff row for an AI comment, or null when that line is not in the diff (GitLab rejects those).
+export function findLine(files, { path, line, side }) {
+  const old = side === 'old'
+  const file = files.find(f => (old ? f.oldPath : f.newPath) === path) ?? files.find(f => f.newPath === path || f.oldPath === path)
+  const row = file?.rows.find(r => old ? r.type !== 'add' && r.old === line : r.type !== 'del' && r.new === line)
+  return row ? { file, row } : null
+}
+
 // GitLab's id for one diff line: sha1(path)_oldPos_newPos
 export const lineCode = (path, r) => `${createHash('sha1').update(path).digest('hex')}_${(r.pos ?? [r.old, r.new]).join('_')}`
 const rangeEnd = (path, r) => ({ line_code: lineCode(path, r), type: { add: 'new', del: 'old', ctx: null }[r.type], old_line: r.old, new_line: r.new })

@@ -1,8 +1,8 @@
 import { app, BrowserWindow, ipcMain, Notification, safeStorage, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import { applyMoves, approve, changes, comment, details, fetchBoard, note, reply, resolve } from './gitlab.js'
-import { ask, reviewPrompt } from './reviewer.js'
+import { applyMoves, approve, changes, comment, details, fetchBoard, findLine, note, reply, resolve } from './gitlab.js'
+import { ask, parseComments, postPrompt, reviewPrompt } from './reviewer.js'
 import { execFileSync } from 'node:child_process'
 
 // keep the data folder named after the package, so the rename does not lose the saved token and reviews
@@ -191,7 +191,8 @@ const cardFor = mr => {
 
 const running = new Map() // card id → AbortController of the review turn in flight (kept out of reviews: it cannot go over IPC)
 
-function turn(card, prompt) {
+// after (optional) turns the AI's reply into the text shown in the chat
+function turn(card, prompt, after) {
   const r = reviews.get(card.id)
   const ctl = new AbortController()
   running.set(card.id, ctl)
@@ -199,7 +200,10 @@ function turn(card, prompt) {
   r.error = null
   sendReviews()
   ask(r.provider, prompt, r.session, ctl.signal)
-    .then(({ session, text }) => { r.session = session; r.messages.push({ role: 'assistant', text }) })
+    .then(async ({ session, text }) => {
+      r.session = session
+      r.messages.push({ role: 'assistant', text: after ? await after(text) : text })
+    })
     .catch(e => { r.error = ctl.signal.aborted ? 'Cancelled.' : e.message })
     .finally(() => {
       running.delete(card.id)
@@ -230,6 +234,36 @@ ipcMain.handle('review:ask', (_e, mr, question) => {
   if (!r || r.busy || !r.session || !question?.trim()) return
   r.messages.push({ role: 'user', text: question.trim() })
   turn(c, question.trim())
+})
+
+// Ask the AI for its findings as JSON, then post each one as an inline comment on its diff line.
+// Findings on lines that are not in the diff are listed in the chat, not posted as general comments.
+async function postComments(card, text) {
+  const list = parseComments(text)
+  const config = loadConfig()
+  const { refs, files } = await changes(config, card.projectId, card.iid)
+  const posted = [], skipped = []
+  for (const c of list) {
+    const at = findLine(files, c)
+    const where = `\`${c.path}:${c.line}\``
+    if (!at) { skipped.push(`${where} (line is not in the diff)`); continue }
+    try {
+      await comment(config, card.projectId, card.iid, { refs, oldPath: at.file.oldPath, newPath: at.file.newPath, start: at.row, end: at.row, body: c.body })
+      posted.push(where)
+    } catch (e) { skipped.push(`${where} (${e.message})`) }
+  }
+  return [
+    `Posted ${posted.length} inline comment${posted.length === 1 ? '' : 's'}.`,
+    ...posted.map(p => `- ${p}`),
+    ...(skipped.length ? ['', `Not posted (${skipped.length}):`, ...skipped.map(s => `- ${s}`)] : []),
+  ].join('\n')
+}
+ipcMain.handle('review:post', (_e, mr) => {
+  const c = cardFor(mr)
+  const r = reviews.get(c.id)
+  if (!r || r.busy || !r.session) return
+  r.messages.push({ role: 'user', text: 'Post review' })
+  turn(c, postPrompt, text => postComments(c, text))
 })
 
 const icon = path.join(import.meta.dirname, 'icon.png')

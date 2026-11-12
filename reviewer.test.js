@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parse } from './reviewer.js'
+import { parse, parseComments } from './reviewer.js'
 
 test('parse claude', () => {
   assert.deepEqual(parse('claude', '{"session_id":"s1","result":"ok"}'), { session: 's1', text: 'ok' })
@@ -17,4 +17,10 @@ test('parse codex', () => {
   ].join('\n')
   assert.deepEqual(parse('codex', out), { session: 't1', text: 'final' })
   assert.throws(() => parse('codex', '{"type":"turn.failed","error":{"message":"nope"}}'), /nope/)
+})
+
+test('parseComments', () => {
+  const text = 'Here:\n```json\n[{"path":"a.js","line":3,"side":"new","body":"bug"},{"path":"a.js","body":"no line"}]\n```'
+  assert.deepEqual(parseComments(text), [{ path: 'a.js', line: 3, side: 'new', body: 'bug' }])
+  assert.throws(() => parseComments('No findings.'))
 })
