@@ -613,6 +613,25 @@ function App() {
   const close = () => { setSelectedId(null); setFull(false) }
   useEffect(() => { window.api.onState(setState); window.api.onSelect(openFull); window.api.onReviews(setReviews); window.api.getReviews().then(setReviews); refresh() }, [])
 
+  // Back/forward: each change of tab, open card or full view is a history entry; mouse buttons 4/5 walk it.
+  useEffect(() => {
+    const nav = { tab, selectedId, full }
+    const cur = history.state
+    if (!cur) history.replaceState(nav, '')
+    else if (cur.tab !== tab || cur.selectedId !== selectedId || cur.full !== full) history.pushState(nav, '')
+  }, [tab, selectedId, full])
+  useEffect(() => {
+    const onPop = e => {
+      if (!e.state) return
+      if (e.state.selectedId !== selectedId) setDetails(null)
+      setTab(e.state.tab); setSelectedId(e.state.selectedId); setFull(e.state.full)
+    }
+    const onMouse = e => { if (e.button === 3) history.back(); else if (e.button === 4) history.forward() }
+    window.addEventListener('popstate', onPop)
+    window.addEventListener('mouseup', onMouse)
+    return () => { window.removeEventListener('popstate', onPop); window.removeEventListener('mouseup', onMouse) }
+  }, [selectedId])
+
   const board = state.board
   // look the card up on every render so it follows the board (status changes, merged MRs disappear)
   const mr = board && [...board.reviewing, ...board.mine].find(c => c.id === selectedId)
